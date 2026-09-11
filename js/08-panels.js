@@ -13,14 +13,24 @@ FAR.renderPanel = function(side) {
     if (side === 'left') FAR.leftFiles = items;
     else FAR.rightFiles = items;
 
+    // Есть ли виртуальный элемент ".." (индекс -1)
+    const hasParent = (safePath !== '/');
+    // Допустимый диапазон индексов курсора: [-1 .. items.length-1] если hasParent,
+    // иначе [0 .. items.length-1]
+    const minCursor = hasParent ? -1 : 0;
+    const maxCursor = items.length - 1;
+
     // --- Корректировка курсора под текущий список ---
     let cursor = side === 'left' ? FAR.leftCursor : FAR.rightCursor;
     if (items.length === 0) {
+        // Пустая папка: курсор может стоять только на ".." (если есть) или быть -1
+        cursor = hasParent ? -1 : -1;
+    } else if (cursor < minCursor) {
+        cursor = minCursor;
+    } else if (cursor > maxCursor) {
+        cursor = maxCursor;
+    } else if (cursor === 0 && !hasParent && items.length === 0) {
         cursor = -1;
-    } else if (cursor >= items.length) {
-        cursor = items.length - 1;
-    } else if (cursor < 0) {
-        cursor = 0;
     }
     if (side === 'left') FAR.leftCursor = cursor;
     else FAR.rightCursor = cursor;
@@ -29,8 +39,11 @@ FAR.renderPanel = function(side) {
     for (const idx of Array.from(selSet)) if (idx >= items.length) selSet.delete(idx);
 
     let html = '';
-    if (safePath !== '/') {
-        html += `<div class="file-item parent-dir" data-index="-1" data-side="${side}"
+    if (hasParent) {
+        const isFocused = (side === FAR.activePanel) && (cursor === -1);
+        const extraClass = isFocused ? 'focused' : '';
+        html += `<div class="file-item parent-dir ${extraClass}" data-index="-1" data-side="${side}"
+            onclick="FAR.handleItemClick(event, '${side}', -1)"
             ondblclick="FAR.goToParent('${side}')"
             title="Перейти в родительский каталог">
             <span class="name">📁 ..</span><span class="meta"></span>
@@ -125,14 +138,22 @@ FAR.handleItemClick = function(event, side, index) {
     event.stopPropagation();
     FAR.setActivePanel(side);
 
+    // Клик по ".." — не выделяем, но ставим курсор
+    if (index === -1) {
+        if (side === 'left') FAR.leftCursor = -1;
+        else FAR.rightCursor = -1;
+        if (side === 'left') { FAR.leftSelectedIdx.clear(); FAR.leftAnchor = -1; }
+        else { FAR.rightSelectedIdx.clear(); FAR.rightAnchor = -1; }
+        FAR.renderPanel(side);
+        return;
+    }
+
     const selSet = side === 'left' ? FAR.leftSelectedIdx : FAR.rightSelectedIdx;
     const anchor = side === 'left' ? FAR.leftAnchor : FAR.rightAnchor;
     const ctrl   = event.ctrlKey || event.metaKey;
     const shift  = event.shiftKey;
 
-    // Клик мышью двигает курсор (кроме Shift+клика — там курсор оставляем на месте,
-    // чтобы соответствовать поведению Windows Explorer)
-    if (index >= 0 && !shift) {
+    if (!shift) {
         if (side === 'left') FAR.leftCursor = index;
         else FAR.rightCursor = index;
     }
@@ -157,6 +178,11 @@ FAR.handleItemClick = function(event, side, index) {
 };
 
 FAR.handleItemDblClick = async function(side, index) {
+    // Двойной клик по ".." — на уровень выше
+    if (index === -1) {
+        FAR.goToParent(side);
+        return;
+    }
     const items = side === 'left' ? FAR.leftFiles : FAR.rightFiles;
     if (index < 0 || index >= items.length) return;
     const item = items[index];
@@ -212,12 +238,12 @@ FAR.updateButtons = function() {
 
 // ============================================================
 // Навигация курсором (стрелки, Home/End, PageUp/PageDown, Shift)
+// Учитывает виртуальный элемент ".." с индексом -1.
 // ============================================================
 
 FAR.getPageSize = function(side) {
     const listEl = document.getElementById(side === 'left' ? 'listLeft' : 'listRight');
     if (!listEl) return 15;
-    // Высота строки ~ 22px (padding 3+3 + font 12 + border 1)
     const rowH = 22;
     const h = listEl.clientHeight;
     return Math.max(1, Math.floor(h / rowH) - 1);
@@ -227,7 +253,7 @@ FAR.scrollCursorIntoView = function(side) {
     const listEl = document.getElementById(side === 'left' ? 'listLeft' : 'listRight');
     if (!listEl) return;
     const cursor = side === 'left' ? FAR.leftCursor : FAR.rightCursor;
-    if (cursor < 0) return;
+    if (cursor < -1) return;
     const el = listEl.querySelector(`.file-item[data-index="${cursor}"]`);
     if (el && el.scrollIntoView) {
         el.scrollIntoView({ block: 'nearest' });
@@ -239,21 +265,30 @@ FAR.moveCursor = function(side, delta, options) {
     const isPage = !!options.page;
     const toEdge = options.toEdge; // 'home' | 'end' | undefined
 
+    const path = side === 'left' ? FAR.leftPath : FAR.rightPath;
+    const hasParent = (FAR.normPath(path) !== '');
     const items = side === 'left' ? FAR.leftFiles : FAR.rightFiles;
-    if (items.length === 0) return;
+
+    // Диапазон курсора: от -1 (если есть "..") до items.length - 1
+    const minCursor = hasParent ? -1 : 0;
+    const maxCursor = items.length - 1;
+
+    if (maxCursor < minCursor) return; // пусто и нет ".."
 
     const selSet = side === 'left' ? FAR.leftSelectedIdx : FAR.rightSelectedIdx;
     const anchor = side === 'left' ? FAR.leftAnchor : FAR.rightAnchor;
     let cursor = side === 'left' ? FAR.leftCursor : FAR.rightCursor;
 
-    if (cursor < 0) cursor = 0;
+    if (cursor < minCursor) cursor = minCursor;
+    if (cursor > maxCursor) cursor = maxCursor;
+    if (cursor < 0 && !hasParent) cursor = 0;
 
     let newCursor = cursor;
 
     if (toEdge === 'home') {
-        newCursor = 0;
+        newCursor = minCursor;
     } else if (toEdge === 'end') {
-        newCursor = items.length - 1;
+        newCursor = maxCursor;
     } else if (isPage) {
         const pageSize = FAR.getPageSize(side);
         newCursor = cursor + delta * pageSize;
@@ -261,10 +296,10 @@ FAR.moveCursor = function(side, delta, options) {
         newCursor = cursor + delta;
     }
 
-    if (newCursor < 0) newCursor = 0;
-    if (newCursor > items.length - 1) newCursor = items.length - 1;
+    if (newCursor < minCursor) newCursor = minCursor;
+    if (newCursor > maxCursor) newCursor = maxCursor;
+
     if (newCursor === cursor && !options.force) {
-        // Даже если позиция не изменилась — обновим скролл на всякий случай
         FAR.scrollCursorIntoView(side);
         return;
     }
@@ -272,19 +307,35 @@ FAR.moveCursor = function(side, delta, options) {
     const shift = !!options.shift;
 
     if (shift) {
-        // Расширяем выделение от anchor до newCursor (как в Windows Explorer)
-        const a = anchor === -1 ? cursor : anchor;
-        selSet.clear();
-        const from = Math.min(a, newCursor);
-        const to   = Math.max(a, newCursor);
-        for (let i = from; i <= to; i++) selSet.add(i);
-        // anchor не меняем — «якорь» остаётся на месте
+        // Расширяем выделение от anchor до newCursor.
+        // Виртуальный ".." (индекс -1) в выделение не входит — оно только для файлов.
+        if (newCursor === -1) {
+            // Курсор на "..", выделение сбрасываем
+            selSet.clear();
+        } else if (anchor === -1 || anchor === undefined) {
+            // Якорь был на ".." — начинаем выделение с newCursor
+            selSet.clear();
+            selSet.add(newCursor);
+            if (side === 'left') FAR.leftAnchor = newCursor;
+            else FAR.rightAnchor = newCursor;
+        } else {
+            selSet.clear();
+            const from = Math.min(anchor, newCursor);
+            const to   = Math.max(anchor, newCursor);
+            for (let i = from; i <= to; i++) selSet.add(i);
+        }
     } else {
-        // Обычное перемещение — выделяем только новый элемент
-        selSet.clear();
-        selSet.add(newCursor);
-        if (side === 'left') FAR.leftAnchor = newCursor;
-        else FAR.rightAnchor = newCursor;
+        // Обычное перемещение
+        if (newCursor === -1) {
+            selSet.clear();
+            if (side === 'left') FAR.leftAnchor = -1;
+            else FAR.rightAnchor = -1;
+        } else {
+            selSet.clear();
+            selSet.add(newCursor);
+            if (side === 'left') FAR.leftAnchor = newCursor;
+            else FAR.rightAnchor = newCursor;
+        }
     }
 
     if (side === 'left') FAR.leftCursor = newCursor;

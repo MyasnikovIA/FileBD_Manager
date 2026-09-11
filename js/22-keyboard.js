@@ -58,6 +58,10 @@ FAR.setupKeyboard = function() {
         if (e.key === 'Enter') {
             e.preventDefault();
             const cursor = side === 'left' ? FAR.leftCursor : FAR.rightCursor;
+            if (cursor === -1) {
+                FAR.goToParent(side);
+                return;
+            }
             if (cursor >= 0 && cursor < items.length) {
                 FAR.handleItemDblClick(side, cursor);
             }
