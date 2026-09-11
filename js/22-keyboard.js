@@ -12,6 +12,11 @@ FAR.setupKeyboard = function() {
                 FAR.closePanoramaViewer();
                 return;
             }
+            const jsdosModal = document.getElementById('jsdosViewerModal');
+            if (jsdosModal && !jsdosModal.classList.contains('hidden')) {
+                FAR.closeJsdosViewer();
+                return;
+            }
             if (!FAR.progress.active) FAR.closeViewer();
             return;
         }

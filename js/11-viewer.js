@@ -1,6 +1,16 @@
 FAR.openFile = async function(item) {
     if (!FAR.ensureDb()) return;
 
+    // ===== ПРОВЕРКА 1: JSDOS-файл =====
+    try {
+        if (typeof FAR.isJsdos === 'function' && FAR.isJsdos(item)) {
+            await FAR.openJsdosViewer(item);
+            return;
+        }
+    } catch (e) {
+        console.warn('Ошибка проверки JSDOS:', e);
+    }
+
     // Проверяем, является ли файл панорамой 360°
     // (по соотношению сторон ~2:1)
     try {
