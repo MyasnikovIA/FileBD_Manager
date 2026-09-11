@@ -1,0 +1,13 @@
+<div id="viewerModal" class="modal-overlay hidden" onclick="FAR.closeViewerOutside(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3 id="viewerTitle">📄 Просмотр</h3>
+            <button class="close-btn" onclick="FAR.closeViewer()">✕</button>
+        </div>
+        <div class="modal-body" id="viewerBody">Загрузка…</div>
+        <div class="modal-footer">
+            <span id="viewerInfo"></span>
+            <button onclick="FAR.downloadCurrentFile()">📥 Скачать</button>
+        </div>
+    </div>
+</div>

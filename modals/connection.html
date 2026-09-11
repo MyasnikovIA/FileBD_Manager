@@ -1,0 +1,37 @@
+<div id="connModal" class="modal-overlay hidden">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3>🔐 Подключение к FileBD</h3>
+            <button class="close-btn" id="connCloseBtn" onclick="FAR.closeConnModal()" style="display:none;">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="conn-form">
+                <div class="conn-field">
+                    <label for="connUrl">Адрес БД (с портом)</label>
+                    <input type="text" id="connUrl" placeholder="http://192.168.15.20:5984" autocomplete="off">
+                </div>
+                <div class="conn-field">
+                    <label for="connDb">Имя базы данных</label>
+                    <input type="text" id="connDb" placeholder="FileBD" autocomplete="off">
+                </div>
+                <div class="conn-field">
+                    <label for="connUser">Имя пользователя</label>
+                    <input type="text" id="connUser" placeholder="username" autocomplete="username">
+                </div>
+                <div class="conn-field">
+                    <label for="connPass">Пароль пользователя</label>
+                    <input type="password" id="connPass" placeholder="password" autocomplete="current-password">
+                </div>
+                <div class="conn-error" id="connError"></div>
+                <div class="conn-hint">
+                    Данные сохраняются в LocalStorage браузера. При повторном входе
+                    окно авторизации не появится, пока вы не нажмёте «LogOut».
+                </div>
+                <div class="conn-actions">
+                    <button class="btn-cancel" onclick="FAR.closeConnModal()" id="connCancelBtn">Отмена</button>
+                    <button class="btn-connect" id="connConnectBtn" onclick="FAR.submitConnModal()">Подключиться</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
