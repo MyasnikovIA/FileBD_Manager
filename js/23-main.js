@@ -55,6 +55,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     window.addEventListener('drop',     function(e) { e.preventDefault(); });
 
     FAR.setupKeyboard();
+    FAR.setupGamepad();
 
     // Устанавливаем обёртку Pannellum для загрузки из PouchDB
     FAR._installPannellumDbWrapper();
