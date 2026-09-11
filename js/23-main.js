@@ -22,6 +22,7 @@ FAR.injectModals = function() {
     const files = [
         'modals/connection.html',
         'modals/viewer.html',
+        'modals/panorama-viewer.html',
         'modals/progress.html',
         'modals/loading.html',
         'modals/debug.html'

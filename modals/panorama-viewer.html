@@ -1,0 +1,19 @@
+<div id="panoramaViewerModal" class="modal-overlay hidden" onclick="FAR.closePanoramaViewerOutside(event)">
+    <div class="modal-content pano-modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3 id="panoramaViewerTitle">🌐 Просмотр панорамы</h3>
+            <button class="close-btn" onclick="FAR.closePanoramaViewer()">✕</button>
+        </div>
+        <div class="modal-body pano-modal-body">
+            <div id="panoramaCanvas" class="panorama-canvas"></div>
+            <div id="panoramaLoading" class="panorama-loading">
+                <div class="spinner"></div>
+                <div class="loading-text" id="panoramaLoadingText">Загрузка панорамы…</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <span id="panoramaViewerInfo"></span>
+            <button onclick="FAR.downloadCurrentPanorama()">📥 Скачать оригинал</button>
+        </div>
+    </div>
+</div>

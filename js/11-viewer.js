@@ -1,5 +1,19 @@
 FAR.openFile = async function(item) {
     if (!FAR.ensureDb()) return;
+
+    // Проверяем, является ли файл панорамой 360°
+    // (по соотношению сторон ~2:1)
+    try {
+        const isPano = await FAR.isPanorama(item);
+        if (isPano) {
+            await FAR.openPanoramaViewer(item);
+            return;
+        }
+    } catch (e) {
+        console.warn('Ошибка проверки на панораму:', e);
+    }
+
+    // === Обычный просмотрщик ===
     const modal = document.getElementById('viewerModal');
     const title = document.getElementById('viewerTitle');
     const body  = document.getElementById('viewerBody');

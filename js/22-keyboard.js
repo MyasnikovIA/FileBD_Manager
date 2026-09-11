@@ -1,6 +1,11 @@
 FAR.setupKeyboard = function() {
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
+            const panoModal = document.getElementById('panoramaViewerModal');
+            if (panoModal && !panoModal.classList.contains('hidden')) {
+                FAR.closePanoramaViewer();
+                return;
+            }
             if (!FAR.progress.active) FAR.closeViewer();
             return;
         }
@@ -19,6 +24,9 @@ FAR.setupKeyboard = function() {
         // Если открыт просмотрщик — не перехватываем (Esc обработан выше)
         const viewerModal = document.getElementById('viewerModal');
         if (viewerModal && !viewerModal.classList.contains('hidden')) return;
+
+        const panoModal = document.getElementById('panoramaViewerModal');
+        if (panoModal && !panoModal.classList.contains('hidden')) return;
 
         const side  = FAR.activePanel;
         const items = side === 'left' ? FAR.leftFiles : FAR.rightFiles;
