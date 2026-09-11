@@ -11,6 +11,7 @@ FAR.openFile = async function(item) {
         console.warn('Ошибка проверки JSDOS:', e);
     }
 
+    // ===== ПРОВЕРКА 2: NES-файл =====
     try {
         if (typeof FAR.isNes === 'function' && FAR.isNes(item)) {
             await FAR.openNesViewer(item);
@@ -20,6 +21,15 @@ FAR.openFile = async function(item) {
         console.warn('Ошибка проверки NES:', e);
     }
 
+    // ===== ПРОВЕРКА 3: EmulatorJS-файл =====
+    try {
+        if (typeof FAR.isEmulatorFile === 'function' && FAR.isEmulatorFile(item)) {
+            await FAR.openEmulatorViewer(item);
+            return;
+        }
+    } catch (e) {
+        console.warn('Ошибка проверки EmulatorJS:', e);
+    }
 
     // Проверяем, является ли файл панорамой 360°
     // (по соотношению сторон ~2:1)

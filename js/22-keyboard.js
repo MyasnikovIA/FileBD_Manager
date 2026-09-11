@@ -22,6 +22,11 @@ FAR.setupKeyboard = function() {
                 FAR.closeNesViewer();
                 return;
             }
+            const emuModal = document.getElementById('emulatorViewerModal');
+            if (emuModal && !emuModal.classList.contains('hidden')) {
+                FAR.closeEmulatorViewer();
+                return;
+            }
             if (!FAR.progress.active) FAR.closeViewer();
             return;
         }
