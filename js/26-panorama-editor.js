@@ -22,7 +22,30 @@ FAR.openPanoramaEditor = async function() {
         return;
     }
 
-    FAR.peState.hotspots = (FAR._panoCurrentHotspots || []).slice();
+    // Нормализуем хотспоты — приводим числа к числовому типу
+    const toNum = function(v, def) {
+        const n = parseFloat(v);
+        return isNaN(n) ? (def || 0) : n;
+    };
+
+    FAR.peState.hotspots = (FAR._panoCurrentHotspots || []).map(function(h) {
+        return {
+            id: h.id || Date.now() + Math.random(),
+            name: h.name || 'Без имени',
+            type: h.type || 'scene',
+            text: h.text || 'Точка перехода',
+            pitch: toNum(h.pitch),
+            yaw: toNum(h.yaw),
+            targetPitch: toNum(h.targetPitch),
+            targetYaw: toNum(h.targetYaw),
+            source: h.source || (h.dbPath ? 'db' : 'url'),
+            dbPath: h.dbPath || '',
+            panorama_url: h.panorama_url || '',
+            path: h.path || '',
+            createdAt: h.createdAt || new Date().toISOString()
+        };
+    });
+
     FAR.peState.editingIndex = -1;
     FAR.peState.currentCoords = {
         pitch: FAR._panoViewer ? FAR._panoViewer.getPitch() : 0,
@@ -40,9 +63,13 @@ FAR.openPanoramaEditor = async function() {
     FAR.peResetForm();
     FAR.peRenderHotspotsList();
     FAR.peBindHandlersOnce();
+
+    console.log('Открыт редактор, точек:', FAR.peState.hotspots.length);
 };
 
 FAR.closePanoramaEditor = function() {
+    FAR.peStopDirectionWatch();
+
     const modal = document.getElementById('panoramaEditorModal');
     if (modal) modal.classList.add('hidden');
 
@@ -80,7 +107,6 @@ FAR.peBindHandlersOnce = function() {
         if (e.key === 'Escape') {
             const ed = document.getElementById('panoramaEditorModal');
             if (ed && !ed.classList.contains('hidden')) {
-                // Если открыт db-picker — сначала его закроем (у него свой обработчик)
                 const picker = document.getElementById('dbPickerModal');
                 if (picker && !picker.classList.contains('hidden')) return;
                 FAR.closePanoramaEditor();
@@ -112,6 +138,8 @@ FAR.peResetForm = function() {
 };
 
 FAR.peClearPreview = function() {
+    FAR.peStopDirectionWatch();
+
     document.getElementById('pePreviewWrapper').classList.remove('loaded');
     document.getElementById('pePreviewCanvas').innerHTML = '';
     document.getElementById('pePreviewInfo').textContent = '';
@@ -124,6 +152,14 @@ FAR.peClearPreview = function() {
         FAR.peState.previewBlobUrl = null;
     }
     FAR.peState.previewItem = null;
+
+    // Сброс индикатора
+    const elPitch = document.getElementById('peViewPitch');
+    const elYaw = document.getElementById('peViewYaw');
+    const elHfov = document.getElementById('peViewHfov');
+    if (elPitch) elPitch.textContent = 'Pitch: 0.00°';
+    if (elYaw)   elYaw.textContent   = 'Yaw: 0.00°';
+    if (elHfov)  elHfov.textContent  = 'Hfov: 100°';
 };
 
 // ============================================================
@@ -132,8 +168,9 @@ FAR.peClearPreview = function() {
 
 FAR.peBrowseDb = function() {
     FAR.openDbPicker(function(path) {
-        // callback: путь подставлен в peDbPath, сразу грузим превью
-        FAR.peLoadPreview();
+        requestAnimationFrame(function() {
+            FAR.peLoadPreview();
+        });
     });
 };
 
@@ -189,6 +226,13 @@ FAR.peLoadPreview = async function() {
             } catch (e) { /* ignore */ }
         }
 
+        // Ждём, пока контейнер получит размеры
+        await new Promise(function(resolve) {
+            requestAnimationFrame(function() {
+                requestAnimationFrame(resolve);
+            });
+        });
+
         const config = {
             type: 'equirectangular',
             panorama: imageUrl,
@@ -217,12 +261,165 @@ FAR.peLoadPreview = async function() {
         FAR.peState.previewViewer = window.pannellum.viewer('pePreviewCanvas', config);
         wrapper.classList.add('loaded');
 
+        const doResize = function() {
+            if (!FAR.peState.previewViewer) return;
+            try {
+                FAR.peState.previewViewer.resize();
+            } catch (e) { /* ignore */ }
+        };
+        setTimeout(doResize, 50);
+        setTimeout(doResize, 200);
+        setTimeout(doResize, 500);
+
+        FAR.peUpdateDirectionIndicator();
+        FAR.peStartDirectionWatch();
+
+        try {
+            FAR.peState.previewViewer.on('load', function() {
+                doResize();
+                FAR.peUpdateDirectionIndicator();
+            });
+        } catch (e) { /* ignore */ }
+
     } catch (e) {
         console.error('peLoadPreview:', e);
         FAR.toast('Не удалось загрузить предпросмотр: ' + e.message, 'error');
-        document.getElementById('pePreviewPlaceholder').textContent =
-            'Ошибка: ' + e.message;
+        const ph = document.getElementById('pePreviewPlaceholder');
+        if (ph) ph.textContent = 'Ошибка: ' + e.message;
     }
+};
+
+// ============================================================
+// Фиксация направления взгляда и live-индикатор
+// ============================================================
+
+FAR.peUpdateDirectionIndicator = function() {
+    const v = FAR.peState.previewViewer;
+    if (!v) return;
+
+    try {
+        const pitch = v.getPitch();
+        const yaw = v.getYaw();
+        const hfov = v.getHfov();
+
+        const elPitch = document.getElementById('peViewPitch');
+        const elYaw = document.getElementById('peViewYaw');
+        const elHfov = document.getElementById('peViewHfov');
+
+        if (elPitch) elPitch.textContent = 'Pitch: ' + pitch.toFixed(2) + '°';
+        if (elYaw)   elYaw.textContent   = 'Yaw: '   + yaw.toFixed(2)   + '°';
+        if (elHfov)  elHfov.textContent  = 'Hfov: '  + hfov.toFixed(0)  + '°';
+    } catch (e) { /* ignore */ }
+};
+
+FAR.peStartDirectionWatch = function() {
+    FAR.peStopDirectionWatch();
+    let lastPitch = null, lastYaw = null, lastHfov = null;
+
+    FAR.peState._watchRaf = function loop() {
+        if (!FAR.peState.previewViewer) {
+            FAR.peState._watchId = null;
+            return;
+        }
+        try {
+            const v = FAR.peState.previewViewer;
+            const pitch = v.getPitch();
+            const yaw = v.getYaw();
+            const hfov = v.getHfov();
+            if (pitch !== lastPitch || yaw !== lastYaw || hfov !== lastHfov) {
+                lastPitch = pitch;
+                lastYaw = yaw;
+                lastHfov = hfov;
+                FAR.peUpdateDirectionIndicator();
+            }
+        } catch (e) { /* ignore */ }
+        FAR.peState._watchId = requestAnimationFrame(FAR.peState._watchRaf);
+    };
+    FAR.peState._watchId = requestAnimationFrame(FAR.peState._watchRaf);
+};
+
+FAR.peStopDirectionWatch = function() {
+    if (FAR.peState._watchId) {
+        cancelAnimationFrame(FAR.peState._watchId);
+        FAR.peState._watchId = null;
+    }
+    FAR.peState._watchRaf = null;
+};
+
+FAR.peCaptureDirection = function() {
+    const v = FAR.peState.previewViewer;
+    if (!v) {
+        FAR.toast('Сначала загрузите предпросмотр', 'warning');
+        return;
+    }
+
+    try {
+        const pitch = v.getPitch();
+        const yaw = v.getYaw();
+
+        document.getElementById('peTargetPitch').value = pitch.toFixed(2);
+        document.getElementById('peTargetYaw').value = yaw.toFixed(2);
+
+        FAR.toast('Направление зафиксировано: Pitch=' + pitch.toFixed(1) +
+                  ', Yaw=' + yaw.toFixed(1), 'success');
+    } catch (e) {
+        FAR.toast('Не удалось прочитать направление', 'error');
+    }
+};
+
+FAR.peResetDirection = function() {
+    document.getElementById('peTargetPitch').value = '0';
+    document.getElementById('peTargetYaw').value = '0';
+    FAR.toast('Направление сброшено', 'info');
+};
+
+FAR.peResetView = function() {
+    const v = FAR.peState.previewViewer;
+    if (!v) return;
+    try {
+        v.lookAt(0, 0, 100, 500);
+        FAR.toast('Камера сброшена', 'info');
+    } catch (e) { /* ignore */ }
+};
+
+// ============================================================
+// Загрузка хотспота в предпросмотр по клику на элемент списка
+// ============================================================
+
+FAR.peLoadHotspotInPreview = function(idx) {
+    const hs = FAR.peState.hotspots[idx];
+    if (!hs) return;
+
+    document.getElementById('peName').value = hs.name || '';
+    document.getElementById('peType').value = hs.type || 'scene';
+    document.getElementById('peText').value = hs.text || '';
+    document.getElementById('peYaw').value = (hs.yaw || 0).toFixed(2);
+    document.getElementById('pePitch').value = (hs.pitch || 0).toFixed(2);
+    document.getElementById('peDbPath').value = hs.dbPath || '';
+    document.getElementById('peUrl').value = hs.source === 'url' ? (hs.panorama_url || '') : '';
+    document.getElementById('peTargetYaw').value = (hs.targetYaw || 0).toFixed(2);
+    document.getElementById('peTargetPitch').value = (hs.targetPitch || 0).toFixed(2);
+
+    FAR.peState.editingIndex = idx;
+    FAR.peRenderHotspotsList();
+
+    FAR.peLoadPreview();
+
+    const targetPitch = hs.targetPitch || 0;
+    const targetYaw = hs.targetYaw || 0;
+
+    const tryApply = function(attempt) {
+        if (FAR.peState.previewViewer) {
+            try {
+                FAR.peState.previewViewer.lookAt(targetPitch, targetYaw, 100, 0);
+            } catch (e) { /* ignore */ }
+        } else if (attempt < 20) {
+            setTimeout(function() { tryApply(attempt + 1); }, 100);
+        }
+    };
+    setTimeout(function() { tryApply(0); }, 300);
+
+    FAR.toast('Редактирование: ' + hs.name, 'info');
 };
 
 // ============================================================
@@ -306,7 +503,6 @@ FAR._panoReloadWithHotspots = async function(item, hotspots) {
     loading.classList.remove('hidden');
     loadingText.textContent = 'Обновление сцены…';
 
-    // Запоминаем текущую камеру
     let savedPitch = 0, savedYaw = 0, savedHfov = 100;
     try {
         if (FAR._panoViewer) {
@@ -363,14 +559,18 @@ FAR._panoReloadWithHotspots = async function(item, hotspots) {
             hotSpots: pannellumHotspots,
             onClickHotSpot: function(hs) {
                 FAR._onPanoramaHotspotClick(hs);
-                return false;
+                return true;   // ← ВАЖНО: true
             }
         };
 
         FAR._panoViewer = window.pannellum.viewer('panoramaCanvas', config);
         FAR._panoViewer.on('load', function() {
             loading.classList.add('hidden');
+            setTimeout(function() {
+                FAR._panoAttachHotspotInterceptors();
+            }, 50);
         });
+
         FAR._panoViewer.on('error', function(msg) {
             loading.classList.add('hidden');
             FAR.toast('Ошибка: ' + msg, 'error');
@@ -392,43 +592,57 @@ FAR.peRenderHotspotsList = function() {
     if (!container) return;
     container.innerHTML = '';
 
-    if (FAR.peState.hotspots.length === 0) {
+    if (!Array.isArray(FAR.peState.hotspots) || FAR.peState.hotspots.length === 0) {
         container.innerHTML = '<p class="pe-empty">Нет созданных точек</p>';
         return;
     }
 
+    const toNum = function(v) {
+        const n = parseFloat(v);
+        return isNaN(n) ? 0 : n;
+    };
+
     FAR.peState.hotspots.forEach(function(hs, idx) {
-        const item = document.createElement('div');
-        item.className = 'pe-hotspot-item';
+        try {
+            const item = document.createElement('div');
+            const isEditing = (idx === FAR.peState.editingIndex);
+            item.className = 'pe-hotspot-item' + (isEditing ? ' editing' : '');
 
-        const targetLabel = hs.source === 'db'
-            ? 'DB: ' + FAR.escapeHtml(hs.dbPath || hs.panorama_url)
-            : 'URL: ' + FAR.escapeHtml(hs.panorama_url);
+            const targetLabel = hs.source === 'db'
+                ? 'DB: ' + FAR.escapeHtml(hs.dbPath || hs.panorama_url || '')
+                : 'URL: ' + FAR.escapeHtml(hs.panorama_url || '');
 
-        item.innerHTML =
-            '<div class="pe-hs-info">' +
-                '<div class="pe-hs-name">' + FAR.escapeHtml(hs.name) + '</div>' +
-                '<div class="pe-hs-detail">' +
-                    'Yaw: ' + (hs.yaw || 0).toFixed(2) +
-                    ' Pitch: ' + (hs.pitch || 0).toFixed(2) + '<br>' +
-                    '→ Yaw: ' + (hs.targetYaw || 0).toFixed(2) +
-                    ' Pitch: ' + (hs.targetPitch || 0).toFixed(2) + '<br>' +
-                    FAR.escapeHtml(targetLabel) +
+            item.innerHTML =
+                '<div class="pe-hs-info">' +
+                    '<div class="pe-hs-name">' + FAR.escapeHtml(hs.name || 'Без имени') + '</div>' +
+                    '<div class="pe-hs-detail">' +
+                        'Yaw: ' + toNum(hs.yaw).toFixed(2) +
+                        ' Pitch: ' + toNum(hs.pitch).toFixed(2) + '<br>' +
+                        '<span class="pe-hs-target">→ Yaw: ' + toNum(hs.targetYaw).toFixed(2) +
+                        ' Pitch: ' + toNum(hs.targetPitch).toFixed(2) + '</span><br>' +
+                        targetLabel +
+                    '</div>' +
                 '</div>' +
-            '</div>' +
-            '<div class="pe-hs-actions">' +
-                '<button class="edit" title="Редактировать" data-idx="' + idx + '">✏️</button>' +
-                '<button class="delete" title="Удалить" data-idx="' + idx + '">🗑️</button>' +
-            '</div>';
+                '<div class="pe-hs-actions">' +
+                    '<button class="load" title="Загрузить в предпросмотр" data-idx="' + idx + '">🔍</button>' +
+                    '<button class="edit" title="Редактировать" data-idx="' + idx + '">✏️</button>' +
+                    '<button class="delete" title="Удалить" data-idx="' + idx + '">🗑️</button>' +
+                '</div>';
 
-        item.querySelector('.edit').addEventListener('click', function() {
-            FAR.peEditHotspot(idx);
-        });
-        item.querySelector('.delete').addEventListener('click', function() {
-            FAR.peDeleteHotspot(idx);
-        });
+            item.querySelector('.load').addEventListener('click', function() {
+                FAR.peLoadHotspotInPreview(idx);
+            });
+            item.querySelector('.edit').addEventListener('click', function() {
+                FAR.peEditHotspot(idx);
+            });
+            item.querySelector('.delete').addEventListener('click', function() {
+                FAR.peDeleteHotspot(idx);
+            });
 
-        container.appendChild(item);
+            container.appendChild(item);
+        } catch (e) {
+            console.error('Ошибка рендера хотспота #' + idx + ':', e, hs);
+        }
     });
 };
 
@@ -448,6 +662,7 @@ FAR.peEditHotspot = function(idx) {
     document.getElementById('peTargetYaw').value = (hs.targetYaw || 0).toFixed(2);
     document.getElementById('peTargetPitch').value = (hs.targetPitch || 0).toFixed(2);
 
+    FAR.peRenderHotspotsList();
     FAR.toast('Редактирование: ' + hs.name, 'info');
 };
 
@@ -500,25 +715,36 @@ FAR.peExportJson = async function() {
 
     const jsonString = JSON.stringify(jsonData, null, 2);
 
-    const dbPath = document.getElementById('peDbPath').value.trim();
-    const urlInput = document.getElementById('peUrl').value.trim();
+    // ===== Определяем, куда сохранять =====
+    // JSON всегда сохраняется рядом с ТЕКУЩЕЙ панорамой,
+    // имя JSON = имя текущей панорамы с расширением .json.
+    const currentItem = FAR._panoCurrentItem;
+    if (!currentItem) {
+        FAR.toast('Нет активной панорамы', 'error');
+        return;
+    }
 
-    // === ВАРИАНТ 1: работаем с БД — сохраняем/перезаписываем файл на сервере (в PouchDB) ===
-    if (dbPath && !urlInput) {
+    const currentPath = FAR.normPath(currentItem.path);
+    const currentBase = currentPath.replace(/\.[^/.]+$/, '');
+    const jsonPath = currentBase + '.json';
+
+    // Сохраняем в БД (если есть подключение)
+    if (FAR.db) {
         try {
-            await FAR.peSaveJsonToDb(jsonData, dbPath);
-            FAR.toast('JSON сохранён в БД', 'success');
+            const savedPath = await FAR.peSaveJsonToDb(jsonData, jsonPath);
+            FAR.toast('JSON сохранён в БД: ' + savedPath, 'success');
+            FAR.setStatus('✅ JSON сохранён: ' + savedPath);
+            FAR.renderPanel('left');
+            FAR.renderPanel('right');
         } catch (e) {
             console.error('peSaveJsonToDb:', e);
-            FAR.toast('Не удалось сохранить JSON в БД: ' + e.message, 'error');
+            FAR.toast('Не удалось сохранить JSON: ' + e.message, 'error');
         }
         return;
     }
 
-    // === ВАРИАНТ 2: внешний URL — скачиваем локально, как раньше ===
-    const baseName = FAR._panoCurrentItem
-        ? FAR._panoCurrentItem.name.replace(/\.[^/.]+$/, '')
-        : 'panorama';
+    // Fallback: скачивание локально
+    const baseName = currentItem.name.replace(/\.[^/.]+$/, '');
     const fileName = baseName + '.json';
 
     const blob = new Blob([jsonString], { type: 'application/json' });
@@ -531,59 +757,71 @@ FAR.peExportJson = async function() {
     document.body.removeChild(a);
     setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
 
-    FAR.toast('Экспортировано: ' + fileName, 'success');
+    FAR.toast('Экспортировано локально: ' + fileName, 'success');
 };
 
 /**
- * Сохраняет JSON в PouchDB рядом с панорамой.
+ * Сохраняет JSON в PouchDB.
  * @param {Object} jsonData — объект для сохранения
- * @param {string} dbPath   — путь к панораме (например /img/scene.jpg или img/scene.jpg)
+ * @param {string} jsonPath — полный путь к JSON-файлу в БД,
+ *                            например "img/Tailand_2024/Phuket/PIC_20240604_174035.json"
  */
-FAR.peSaveJsonToDb = async function(jsonData, dbPath) {
+FAR.peSaveJsonToDb = async function(jsonData, jsonPath) {
     if (!FAR.db) throw new Error('Нет подключения к БД');
 
     const jsonString = JSON.stringify(jsonData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
 
-    // Извлекаем базовое имя и папку из пути панорамы
-    let cleanPath = FAR.normPath(dbPath);
-    if (!cleanPath) throw new Error('Пустой путь');
+    let cleanPath = FAR.normPath(jsonPath);
 
-    // Убираем расширение у файла панорамы и добавляем .json
-    const jsonPath = cleanPath.replace(/\.[^/.]+$/, '') + '.json';
-
-    // Формируем ID документа
-    const docId = 'f:' + encodeURIComponent(jsonPath);
-
-    // Проверяем, существует ли документ — берём _rev для перезаписи
-    let rev = null;
-    try {
-        const existing = await FAR.db.get(docId);
-        rev = existing._rev;
-    } catch (e) {
-        if (e.status !== 404) throw e;
+    if (!/\.json$/i.test(cleanPath)) {
+        cleanPath = cleanPath.replace(/\.[^/.]+$/, '') + '.json';
     }
 
-    // Создаём/обновляем документ
+    const docId = 'f:' + encodeURIComponent(cleanPath);
+
+    // Проверяем существование документа (без 404 в консоли)
+    let rev = null;
+    try {
+        const res = await FAR.db.allDocs({ keys: [docId], include_docs: false });
+        const row = res.rows && res.rows[0];
+        if (row && !row.error && row.value && row.value.rev) {
+            rev = row.value.rev;
+        }
+    } catch (e) {
+        console.warn('allDocs check failed:', e);
+    }
+
+    // Blob → base64 для вложения
+    const arrayBuffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+
     const doc = {
         _id: docId,
         type: 'file',
-        path: jsonPath,
-        name: jsonPath.split('/').pop(),
-        size: new Blob([jsonString]).size,
+        path: cleanPath,
+        name: cleanPath.split('/').pop(),
+        size: blob.size,
         mtime: Date.now(),
         binary: false,
-        contentType: 'application/json'
+        contentType: 'application/json',
+        _attachments: {
+            b: {
+                content_type: 'application/json',
+                data: base64
+            }
+        }
     };
     if (rev) doc._rev = rev;
 
-    await FAR.db.put(doc);
+    const putResult = await FAR.db.put(doc);
+    console.log('JSON сохранён в БД:', cleanPath, 'rev:', putResult.rev);
 
-    // Прикрепляем содержимое как вложение 'b'
-    const fresh = await FAR.db.get(docId);
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    await FAR.db.putAttachment(docId, 'b', fresh._rev, blob, 'application/json');
-
-    // Обновляем fileIndex
     const existingIdx = FAR.fileIndex.find(f => f._id === docId);
     if (existingIdx) {
         existingIdx.size = doc.size;
@@ -592,7 +830,7 @@ FAR.peSaveJsonToDb = async function(jsonData, dbPath) {
     } else {
         FAR.fileIndex.push({
             _id: docId,
-            path: jsonPath,
+            path: cleanPath,
             size: doc.size,
             mtime: doc.mtime,
             binary: false,
@@ -602,12 +840,11 @@ FAR.peSaveJsonToDb = async function(jsonData, dbPath) {
         });
     }
 
-    console.log('JSON сохранён в БД:', jsonPath);
-    return jsonPath;
+    return cleanPath;
 };
 
 // ============================================================
-// Импорт JSON (загрузка с компьютера — как было)
+// Импорт JSON (загрузка с компьютера)
 // ============================================================
 
 FAR.peImportJson = function() {

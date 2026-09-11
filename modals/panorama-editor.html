@@ -91,13 +91,36 @@
 
                 <h4>Предпросмотр целевой сцены</h4>
                 <div id="pePreviewWrapper" class="pe-preview-wrapper">
-                    <div id="pePreviewCanvas" class="pe-preview-canvas"></div>
+                    <div id="pePreviewCanvas" class="pe-preview-canvas" tabindex="0"></div>
                     <div id="pePreviewPlaceholder" class="pe-preview-placeholder">
                         Укажите путь к файлу и нажмите «Загрузить предпросмотр»
                     </div>
                 </div>
-                <div class="pe-actions">
+
+                <!-- Live-индикатор направления -->
+                <div class="pe-view-indicator">
+                    <div class="pe-view-row">
+                        <span class="pe-view-label">Текущее направление:</span>
+                        <span class="pe-view-value" id="peViewPitch">Pitch: 0.00°</span>
+                        <span class="pe-view-value" id="peViewYaw">Yaw: 0.00°</span>
+                        <span class="pe-view-value" id="peViewHfov">Hfov: 100°</span>
+                    </div>
+                </div>
+
+                <!-- Кнопки фиксации направления -->
+                <div class="pe-actions pe-actions-tight">
                     <button class="btn btn-secondary" onclick="FAR.peLoadPreview()">👁 Загрузить предпросмотр</button>
+                    <button class="btn btn-primary" onclick="FAR.peCaptureDirection()" title="Записать текущее направление взгляда в Target Yaw/Pitch">🎯 Зафиксировать направление</button>
+                    <button class="btn btn-secondary" onclick="FAR.peResetDirection()" title="Сбросить Target в 0,0">↺ Сбросить направление</button>
+                    <button class="btn btn-secondary" onclick="FAR.peResetView()" title="Вернуть камеру предпросмотра в 0,0">🎥 Сбросить вид</button>
+                </div>
+                <div class="pe-view-hint">
+                    Поверните мини-панораму в нужную сторону и нажмите «🎯 Зафиксировать направление» — значения попадут в поля Target Yaw/Target Pitch.
+                </div>
+
+                <!-- Дублирующая кнопка Сохранить точку (для удобства) -->
+                <div class="pe-actions pe-actions-tight">
+                    <button class="btn btn-success" onclick="FAR.peSaveHotspot()">💾 Сохранить точку</button>
                     <span id="pePreviewInfo" class="pe-preview-info"></span>
                 </div>
 

@@ -20,18 +20,12 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="58b0bec6-76ed-43a5-8023-6ef531bb6bea" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/css/db-picker.css" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/css/panorama-editor.css" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/js/25-panorama-db-resolver.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/js/26-panorama-editor.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/js/27-db-picker.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/modals/db-picker.html" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/modals/panorama-editor.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/index.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/22-keyboard.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/22-keyboard.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/23-main.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/23-main.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/css/panorama-editor.css" beforeDir="false" afterPath="$PROJECT_DIR$/css/panorama-editor.css" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/js/24-panorama-viewer.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/24-panorama-viewer.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/js/25-panorama-db-resolver.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/25-panorama-db-resolver.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/js/26-panorama-editor.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/26-panorama-editor.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/modals/panorama-editor.html" beforeDir="false" afterPath="$PROJECT_DIR$/modals/panorama-editor.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -79,14 +73,15 @@
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
     <state x="712" y="322" key="#com.intellij.fileTypes.FileTypeChooser/0.0.1920.1040/1920.0.1920.1040@0.0.1920.1040" timestamp="1789095450300" />
-    <state x="667" y="253" width="585" height="534" key="find.popup" timestamp="1789096491276">
-      <screen x="0" y="0" width="1920" height="1040" />
+    <state x="2587" y="253" width="585" height="534" key="find.popup" timestamp="1789115427079">
+      <screen x="1920" y="0" width="1920" height="1040" />
     </state>
     <state x="667" y="253" width="585" height="534" key="find.popup/0.0.1920.1040/1920.0.1920.1040@0.0.1920.1040" timestamp="1789096491276" />
-    <state x="2543" y="225" width="672" height="678" key="search.everywhere.popup" timestamp="1789112572798">
+    <state x="2587" y="253" width="585" height="534" key="find.popup/0.0.1920.1040/1920.0.1920.1040@1920.0.1920.1040" timestamp="1789115427079" />
+    <state x="2543" y="225" width="672" height="678" key="search.everywhere.popup" timestamp="1789116297625">
       <screen x="1920" y="0" width="1920" height="1040" />
     </state>
     <state x="623" y="225" width="672" height="678" key="search.everywhere.popup/0.0.1920.1040/1920.0.1920.1040@0.0.1920.1040" timestamp="1789111569151" />
-    <state x="2543" y="225" width="672" height="678" key="search.everywhere.popup/0.0.1920.1040/1920.0.1920.1040@1920.0.1920.1040" timestamp="1789112572798" />
+    <state x="2543" y="225" width="672" height="678" key="search.everywhere.popup/0.0.1920.1040/1920.0.1920.1040@1920.0.1920.1040" timestamp="1789116297625" />
   </component>
 </project>
