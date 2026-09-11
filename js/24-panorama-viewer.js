@@ -18,7 +18,9 @@ FAR.PANO_ASPECT_MAX = 2.1;
 FAR.isPanorama = async function(item) {
     if (!item || item.isFolder) return false;
 
-    FAR._ensureItemName(item);
+    if (typeof FAR._ensureItemName === 'function') {
+        FAR._ensureItemName(item);
+    }
 
     const ext = (item.name.split('.').pop() || '').toLowerCase();
     const imgExts = ['jpg', 'jpeg', 'png', 'webp'];
@@ -62,7 +64,9 @@ FAR._measureImage = function(url) {
  */
 FAR._findPanoramaJson = async function(item) {
     if (!item) return null;
-    FAR._ensureItemName(item);
+    if (typeof FAR._ensureItemName === 'function') {
+        FAR._ensureItemName(item);
+    }
 
     const baseName = item.name.replace(/\.[^/.]+$/, '');
     const dir = item.path && item.path.includes('/')
@@ -138,7 +142,9 @@ FAR._jsonToPannellumHotspots = function(jsonData, basePath, fallbackImageUrl) {
  */
 FAR.openPanoramaViewer = async function(item) {
     if (!FAR.ensureDb()) return;
-    FAR._ensureItemName(item);
+    if (typeof FAR._ensureItemName === 'function') {
+        FAR._ensureItemName(item);
+    }
 
     FAR.closeViewer();
 
@@ -229,6 +235,7 @@ FAR.openPanoramaViewer = async function(item) {
             FAR._panoUpdateFooter();
             setTimeout(function() {
                 FAR._panoAttachHotspotInterceptors();
+                FAR._panoAttachDblClickHandler();
             }, 50);
         });
 
@@ -261,7 +268,9 @@ FAR._onPanoramaHotspotClick = async function(hs) {
         try {
             const item = FAR._findDbImageByPath(hs.dbPath);
             if (!item) throw new Error('Файл не найден: ' + hs.dbPath);
-            FAR._ensureItemName(item);
+            if (typeof FAR._ensureItemName === 'function') {
+                FAR._ensureItemName(item);
+            }
 
             FAR._panoCurrentItem = item;
             FAR._panoCurrentHotspots = [];
@@ -319,6 +328,7 @@ FAR._onPanoramaHotspotClick = async function(hs) {
                 FAR.setStatus('🌐 Панорама: ' + item.name);
                 setTimeout(function() {
                     FAR._panoAttachHotspotInterceptors();
+                    FAR._panoAttachDblClickHandler();
                 }, 50);
             });
             FAR._panoViewer.on('error', function(msg) {
@@ -326,7 +336,9 @@ FAR._onPanoramaHotspotClick = async function(hs) {
                 FAR.toast('Ошибка панорамы: ' + msg, 'error');
             });
 
-            FAR._selectFileInPanel(item);
+            if (typeof FAR._selectFileInPanel === 'function') {
+                FAR._selectFileInPanel(item);
+            }
 
             return;
         } catch (e) {
@@ -367,7 +379,9 @@ FAR._onPanoramaHotspotClick = async function(hs) {
         if (!targetItem) {
             throw new Error('Файл панорамы не найден в БД: ' + hs.panorama_url);
         }
-        FAR._ensureItemName(targetItem);
+        if (typeof FAR._ensureItemName === 'function') {
+            FAR._ensureItemName(targetItem);
+        }
 
         FAR._panoCurrentItem = targetItem;
         FAR._panoCurrentHotspots = [];
@@ -425,6 +439,7 @@ FAR._onPanoramaHotspotClick = async function(hs) {
             FAR.setStatus('🌐 Панорама: ' + targetItem.name);
             setTimeout(function() {
                 FAR._panoAttachHotspotInterceptors();
+                FAR._panoAttachDblClickHandler();
             }, 50);
         });
         FAR._panoViewer.on('error', function(msg) {
@@ -432,7 +447,9 @@ FAR._onPanoramaHotspotClick = async function(hs) {
             FAR.toast('Ошибка панорамы: ' + msg, 'error');
         });
 
-        FAR._selectFileInPanel(targetItem);
+        if (typeof FAR._selectFileInPanel === 'function') {
+            FAR._selectFileInPanel(targetItem);
+        }
 
     } catch (e) {
         console.error('hotspot click:', e);
@@ -444,6 +461,14 @@ FAR._onPanoramaHotspotClick = async function(hs) {
 FAR.closePanoramaViewer = function() {
     const modal = document.getElementById('panoramaViewerModal');
     if (modal) modal.classList.add('hidden');
+
+    const container = document.getElementById('panoramaCanvas');
+    if (container && container._farDblClickHandler) {
+        try {
+            container.removeEventListener('dblclick', container._farDblClickHandler, true);
+        } catch (e) {}
+        container._farDblClickHandler = null;
+    }
 
     if (FAR._panoViewer) {
         try { FAR._panoViewer.destroy(); } catch (e) {}
@@ -557,12 +582,110 @@ FAR._panoAttachHotspotInterceptors = function() {
 };
 
 // ============================================================
+// Двойной клик по панораме → открыть редактор с координатами
+// ============================================================
+
+FAR._panoHandleDblClick = function(coords) {
+    if (!coords) return;
+    if (!FAR._panoCurrentItem) return;
+
+    const pitch = parseFloat(coords.pitch) || 0;
+    const yaw = parseFloat(coords.yaw) || 0;
+
+    console.log('DblClick по панораме:', { pitch, yaw });
+
+    FAR.openPanoramaEditor({ pitch: pitch, yaw: yaw });
+
+    FAR.toast('Координаты точки: Yaw=' + yaw.toFixed(2) +
+              ', Pitch=' + pitch.toFixed(2), 'success');
+};
+
+FAR._panoAttachDblClickHandler = function() {
+    const container = document.getElementById('panoramaCanvas');
+    if (!container) return;
+
+    if (container._farDblClickHandler) {
+        try {
+            container.removeEventListener('dblclick', container._farDblClickHandler, true);
+        } catch (e) {}
+        container._farDblClickHandler = null;
+    }
+
+    const handler = function(e) {
+        if (e.target && e.target.closest && e.target.closest('.pnlm-hotspot-base')) {
+            return;
+        }
+
+        if (e.target && e.target.closest && (
+            e.target.closest('.pnlm-controls-container') ||
+            e.target.closest('.pnlm-control') ||
+            e.target.closest('.pnlm-zoom-controls') ||
+            e.target.closest('.pnlm-fullscreen-toggle-button') ||
+            e.target.closest('.pnlm-compass')
+        )) {
+            return;
+        }
+
+        let coords = null;
+        try {
+            if (FAR._panoViewer && typeof FAR._panoViewer.mouseEventToCoords === 'function') {
+                const arr = FAR._panoViewer.mouseEventToCoords(e);
+                if (Array.isArray(arr) && arr.length >= 2) {
+                    coords = { pitch: arr[0], yaw: arr[1] };
+                }
+            }
+        } catch (err) {
+            console.warn('mouseEventToCoords error:', err);
+        }
+
+        if (!coords) {
+            try {
+                if (FAR._panoViewer) {
+                    const canvas = container.querySelector('canvas');
+                    if (canvas) {
+                        const rect = canvas.getBoundingClientRect();
+                        const cx = e.clientX - rect.left;
+                        const cy = e.clientY - rect.top;
+                        const nx = (cx / rect.width) * 2 - 1;
+                        const ny = 1 - (cy / rect.height) * 2;
+                        const hfov = FAR._panoViewer.getHfov() || 100;
+                        const pitch0 = FAR._panoViewer.getPitch() || 0;
+                        const yaw0 = FAR._panoViewer.getYaw() || 0;
+                        coords = {
+                            pitch: pitch0 - ny * (hfov / 2) * 0.9,
+                            yaw:   yaw0   + nx * (hfov / 2)
+                        };
+                    }
+                }
+            } catch (err) {
+                console.warn('Fallback dblclick coords error:', err);
+            }
+        }
+
+        if (!coords) {
+            FAR.toast('Не удалось определить координаты клика', 'warning');
+            return;
+        }
+
+        e.stopPropagation();
+        e.preventDefault();
+
+        FAR._panoHandleDblClick(coords);
+    };
+
+    container._farDblClickHandler = handler;
+    container.addEventListener('dblclick', handler, true);
+};
+
+// ============================================================
 // Синхронизация активной панели файлового менеджера
 // ============================================================
 
 FAR._selectFileInPanel = function(item) {
     if (!item || !item.path) return;
-    FAR._ensureItemName(item);
+    if (typeof FAR._ensureItemName === 'function') {
+        FAR._ensureItemName(item);
+    }
 
     const targetPath = FAR.normPath(item.path);
     if (!targetPath) return;

@@ -12,45 +12,63 @@ FAR.peState = {
     _bound: false
 };
 
+FAR._peToNum = function(v, def) {
+    const n = parseFloat(v);
+    return isNaN(n) ? (def || 0) : n;
+};
+
+FAR._peNormalizeHotspot = function(h) {
+    return {
+        id: h.id || Date.now() + Math.random(),
+        name: h.name || 'Без имени',
+        type: h.type || 'scene',
+        text: h.text || 'Точка перехода',
+        pitch: FAR._peToNum(h.pitch),
+        yaw: FAR._peToNum(h.yaw),
+        targetPitch: FAR._peToNum(h.targetPitch),
+        targetYaw: FAR._peToNum(h.targetYaw),
+        source: h.source || (h.dbPath ? 'db' : 'url'),
+        dbPath: h.dbPath || '',
+        panorama_url: h.panorama_url || '',
+        path: h.path || '',
+        createdAt: h.createdAt || new Date().toISOString()
+    };
+};
+
 // ============================================================
 // Открытие/закрытие редактора
 // ============================================================
 
-FAR.openPanoramaEditor = async function() {
+/**
+ * Открывает редактор точек.
+ * @param {Object} [coords] — необязательные координаты { pitch, yaw }
+ *                           для предзаполнения полей Yaw/Pitch (двойной клик).
+ */
+FAR.openPanoramaEditor = async function(coords) {
     if (!FAR._panoCurrentItem) {
         FAR.toast('Сначала откройте панораму', 'warning');
         return;
     }
 
-    // Нормализуем хотспоты — приводим числа к числовому типу
-    const toNum = function(v, def) {
-        const n = parseFloat(v);
-        return isNaN(n) ? (def || 0) : n;
-    };
-
-    FAR.peState.hotspots = (FAR._panoCurrentHotspots || []).map(function(h) {
-        return {
-            id: h.id || Date.now() + Math.random(),
-            name: h.name || 'Без имени',
-            type: h.type || 'scene',
-            text: h.text || 'Точка перехода',
-            pitch: toNum(h.pitch),
-            yaw: toNum(h.yaw),
-            targetPitch: toNum(h.targetPitch),
-            targetYaw: toNum(h.targetYaw),
-            source: h.source || (h.dbPath ? 'db' : 'url'),
-            dbPath: h.dbPath || '',
-            panorama_url: h.panorama_url || '',
-            path: h.path || '',
-            createdAt: h.createdAt || new Date().toISOString()
-        };
-    });
+    // Нормализуем хотспоты
+    const raw = Array.isArray(FAR._panoCurrentHotspots) ? FAR._panoCurrentHotspots : [];
+    FAR.peState.hotspots = raw.map(FAR._peNormalizeHotspot);
 
     FAR.peState.editingIndex = -1;
-    FAR.peState.currentCoords = {
-        pitch: FAR._panoViewer ? FAR._panoViewer.getPitch() : 0,
-        yaw: FAR._panoViewer ? FAR._panoViewer.getYaw() : 0
-    };
+
+    // Координаты по умолчанию — текущий вид камеры.
+    // Если переданы coords (двойной клик), используем их.
+    if (coords && coords.pitch !== undefined && coords.yaw !== undefined) {
+        FAR.peState.currentCoords = {
+            pitch: FAR._peToNum(coords.pitch),
+            yaw: FAR._peToNum(coords.yaw)
+        };
+    } else {
+        FAR.peState.currentCoords = {
+            pitch: FAR._panoViewer ? FAR._panoViewer.getPitch() : 0,
+            yaw: FAR._panoViewer ? FAR._panoViewer.getYaw() : 0
+        };
+    }
 
     const modal = document.getElementById('panoramaEditorModal');
     modal.classList.remove('hidden');
@@ -61,10 +79,18 @@ FAR.openPanoramaEditor = async function() {
         'Файл: ' + FAR._panoCurrentItem.path;
 
     FAR.peResetForm();
+
+    // Явно подставляем переданные координаты после сброса формы
+    if (coords && coords.pitch !== undefined && coords.yaw !== undefined) {
+        document.getElementById('peYaw').value = FAR._peToNum(coords.yaw).toFixed(2);
+        document.getElementById('pePitch').value = FAR._peToNum(coords.pitch).toFixed(2);
+    }
+
     FAR.peRenderHotspotsList();
     FAR.peBindHandlersOnce();
 
-    console.log('Открыт редактор, точек:', FAR.peState.hotspots.length);
+    console.log('Открыт редактор, точек:', FAR.peState.hotspots.length,
+                'coords:', FAR.peState.currentCoords);
 };
 
 FAR.closePanoramaEditor = function() {
@@ -190,7 +216,6 @@ FAR.peLoadPreview = async function() {
     }
 
     const wrapper = document.getElementById('pePreviewWrapper');
-    const canvas = document.getElementById('pePreviewCanvas');
     const info = document.getElementById('pePreviewInfo');
 
     FAR.peClearPreview();
@@ -568,6 +593,7 @@ FAR._panoReloadWithHotspots = async function(item, hotspots) {
             loading.classList.add('hidden');
             setTimeout(function() {
                 FAR._panoAttachHotspotInterceptors();
+                FAR._panoAttachDblClickHandler();
             }, 50);
         });
 
@@ -597,11 +623,6 @@ FAR.peRenderHotspotsList = function() {
         return;
     }
 
-    const toNum = function(v) {
-        const n = parseFloat(v);
-        return isNaN(n) ? 0 : n;
-    };
-
     FAR.peState.hotspots.forEach(function(hs, idx) {
         try {
             const item = document.createElement('div');
@@ -616,10 +637,10 @@ FAR.peRenderHotspotsList = function() {
                 '<div class="pe-hs-info">' +
                     '<div class="pe-hs-name">' + FAR.escapeHtml(hs.name || 'Без имени') + '</div>' +
                     '<div class="pe-hs-detail">' +
-                        'Yaw: ' + toNum(hs.yaw).toFixed(2) +
-                        ' Pitch: ' + toNum(hs.pitch).toFixed(2) + '<br>' +
-                        '<span class="pe-hs-target">→ Yaw: ' + toNum(hs.targetYaw).toFixed(2) +
-                        ' Pitch: ' + toNum(hs.targetPitch).toFixed(2) + '</span><br>' +
+                        'Yaw: ' + FAR._peToNum(hs.yaw).toFixed(2) +
+                        ' Pitch: ' + FAR._peToNum(hs.pitch).toFixed(2) + '<br>' +
+                        '<span class="pe-hs-target">→ Yaw: ' + FAR._peToNum(hs.targetYaw).toFixed(2) +
+                        ' Pitch: ' + FAR._peToNum(hs.targetPitch).toFixed(2) + '</span><br>' +
                         targetLabel +
                     '</div>' +
                 '</div>' +
@@ -700,8 +721,8 @@ FAR.peExportJson = async function() {
                 name: h.name,
                 type: h.type,
                 text: h.text,
-                pitch: parseFloat(h.pitch.toFixed(12)),
-                yaw: parseFloat(h.yaw.toFixed(12)),
+                pitch: parseFloat((h.pitch || 0).toFixed(12)),
+                yaw: parseFloat((h.yaw || 0).toFixed(12)),
                 targetPitch: parseFloat((h.targetPitch || 0).toFixed(12)),
                 targetYaw: parseFloat((h.targetYaw || 0).toFixed(12)),
                 source: h.source || 'url',
@@ -715,15 +736,14 @@ FAR.peExportJson = async function() {
 
     const jsonString = JSON.stringify(jsonData, null, 2);
 
-    // ===== Определяем, куда сохранять =====
-    // JSON всегда сохраняется рядом с ТЕКУЩЕЙ панорамой,
-    // имя JSON = имя текущей панорамы с расширением .json.
+    // ===== JSON всегда сохраняется рядом с ТЕКУЩЕЙ панорамой =====
     const currentItem = FAR._panoCurrentItem;
     if (!currentItem) {
         FAR.toast('Нет активной панорамы', 'error');
         return;
     }
 
+    FAR._ensureItemName(currentItem);
     const currentPath = FAR.normPath(currentItem.path);
     const currentBase = currentPath.replace(/\.[^/.]+$/, '');
     const jsonPath = currentBase + '.json';
@@ -763,8 +783,7 @@ FAR.peExportJson = async function() {
 /**
  * Сохраняет JSON в PouchDB.
  * @param {Object} jsonData — объект для сохранения
- * @param {string} jsonPath — полный путь к JSON-файлу в БД,
- *                            например "img/Tailand_2024/Phuket/PIC_20240604_174035.json"
+ * @param {string} jsonPath — полный путь к JSON-файлу в БД
  */
 FAR.peSaveJsonToDb = async function(jsonData, jsonPath) {
     if (!FAR.db) throw new Error('Нет подключения к БД');
@@ -773,14 +792,13 @@ FAR.peSaveJsonToDb = async function(jsonData, jsonPath) {
     const blob = new Blob([jsonString], { type: 'application/json' });
 
     let cleanPath = FAR.normPath(jsonPath);
-
     if (!/\.json$/i.test(cleanPath)) {
         cleanPath = cleanPath.replace(/\.[^/.]+$/, '') + '.json';
     }
 
     const docId = 'f:' + encodeURIComponent(cleanPath);
 
-    // Проверяем существование документа (без 404 в консоли)
+    // Проверяем существование документа
     let rev = null;
     try {
         const res = await FAR.db.allDocs({ keys: [docId], include_docs: false });
@@ -792,7 +810,7 @@ FAR.peSaveJsonToDb = async function(jsonData, jsonPath) {
         console.warn('allDocs check failed:', e);
     }
 
-    // Blob → base64 для вложения
+    // Blob → base64
     const arrayBuffer = await blob.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
     let binary = '';
@@ -836,7 +854,8 @@ FAR.peSaveJsonToDb = async function(jsonData, jsonPath) {
             binary: false,
             children: [],
             contentType: 'application/json',
-            docType: 'file'
+            docType: 'file',
+            name: doc.name
         });
     }
 
@@ -864,23 +883,7 @@ FAR.peHandleJsonFile = function(event) {
             else if (Array.isArray(data)) arr = data;
             else throw new Error('Ожидается поле hotSpots');
 
-            arr = arr.map(function(h) {
-                return {
-                    id: h.id || Date.now() + Math.random(),
-                    name: h.name || 'Без имени',
-                    type: h.type || 'scene',
-                    text: h.text || 'Переход',
-                    pitch: h.pitch || 0,
-                    yaw: h.yaw || 0,
-                    targetPitch: h.targetPitch || 0,
-                    targetYaw: h.targetYaw || 0,
-                    source: h.source || (h.dbPath ? 'db' : 'url'),
-                    dbPath: h.dbPath || '',
-                    panorama_url: h.panorama_url || '',
-                    path: h.path || '',
-                    createdAt: h.createdAt || new Date().toISOString()
-                };
-            });
+            arr = arr.map(FAR._peNormalizeHotspot);
 
             FAR.peState.hotspots = arr;
             FAR.peRenderHotspotsList();

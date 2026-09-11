@@ -68,3 +68,19 @@
         max-height: 95vh;
     }
 }
+
+/* Подсказка про двойной клик в футере модалки просмотра панорамы */
+.pano-dblclick-hint {
+    font-size: 11px;
+    color: #a6adc8;
+    font-style: italic;
+    margin-right: auto;
+    padding-left: 8px;
+    cursor: help;
+}
+
+@media (max-width: 768px) {
+    .pano-dblclick-hint {
+        display: none;
+    }
+}
