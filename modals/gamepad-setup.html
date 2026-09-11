@@ -1,0 +1,33 @@
+<div id="gamepadSetupModal" class="modal-overlay hidden" onclick="FAR.closeGamepadSetupOutside(event)">
+    <div class="modal-content gamepad-setup-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3>🎮 Настройка джойстика</h3>
+            <button class="close-btn" onclick="FAR.closeGamepadSetup()">✕</button>
+        </div>
+
+        <div class="modal-body">
+            <div class="gamepad-status" id="gamepadSetupStatus">
+                Ожидание джойстика… Нажмите любую кнопку или двиньте стик.
+            </div>
+
+            <p class="gamepad-hint">
+                Для каждой строки нажмите кнопку на джойстике, чтобы назначить её на действие.
+                Затем нажмите <b>💾 Сохранить</b>.
+            </p>
+
+            <div class="gamepad-actions-list" id="gamepadActionsList"></div>
+
+            <div class="gamepad-live" id="gamepadSetupLive">
+                <div class="gamepad-live-title">Текущее состояние джойстика:</div>
+                <div class="gamepad-live-buttons" id="gamepadSetupButtons"></div>
+                <div class="gamepad-live-axes" id="gamepadSetupAxes"></div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <span id="gamepadSetupFooter"></span>
+            <button class="btn-cancel" onclick="FAR.resetGamepadMap()">↺ По умолчанию</button>
+            <button class="btn-save" onclick="FAR.saveGamepadMap()">💾 Сохранить</button>
+        </div>
+    </div>
+</div>

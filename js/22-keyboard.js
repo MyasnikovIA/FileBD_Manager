@@ -2,6 +2,11 @@ FAR.setupKeyboard = function() {
     document.addEventListener('keydown', function(e) {
         // === ESC: закрываем модалки по приоритету ===
         if (e.key === 'Escape') {
+            const gpSetup = document.getElementById('gamepadSetupModal');
+            if (gpSetup && !gpSetup.classList.contains('hidden')) {
+                FAR.closeGamepadSetup();
+                return;
+            }
             const ed = document.getElementById('panoramaEditorModal');
             if (ed && !ed.classList.contains('hidden')) {
                 FAR.closePanoramaEditor();
@@ -57,6 +62,10 @@ FAR.setupKeyboard = function() {
         // Модалка NES — не перехватываем (стрелки идут в JSNES)
         const nesModal2 = document.getElementById('nesViewerModal');
         if (nesModal2 && !nesModal2.classList.contains('hidden')) return;
+
+        // Модалка EmulatorJS — не перехватываем (стрелки идут в эмулятор)
+        const emuModal2 = document.getElementById('emulatorViewerModal');
+        if (emuModal2 && !emuModal2.classList.contains('hidden')) return;
 
         // === Навигация курсором ===
         const side  = FAR.activePanel;

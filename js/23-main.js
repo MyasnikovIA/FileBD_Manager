@@ -29,6 +29,7 @@ FAR.injectModals = function() {
         'modals/emulator-viewer.html',
         'modals/progress.html',
         'modals/loading.html',
+        'modals/gamepad-setup.html',
         'modals/debug.html'
     ];
     let html = '';
@@ -55,7 +56,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     window.addEventListener('drop',     function(e) { e.preventDefault(); });
 
     FAR.setupKeyboard();
-    FAR.setupGamepad();
+    FAR.setupGamepadAuto();
 
     // Устанавливаем обёртку Pannellum для загрузки из PouchDB
     FAR._installPannellumDbWrapper();

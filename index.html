@@ -26,6 +26,7 @@
     <link rel="stylesheet" href="lib/js-dos/js-dos.css">
     <link rel="stylesheet" href="css/nes-viewer.css">
     <link rel="stylesheet" href="css/emulator-viewer.css">
+    <link rel="stylesheet" href="css/gamepad-setup.css">
 </head>
 <body>
 
@@ -40,6 +41,7 @@
         <button onclick="FAR.refreshFiles()" class="btn-warning" id="btnRefresh" disabled>🔄 Обновить</button>
         <button onclick="FAR.showDebug()" id="btnDebug" title="Показать структуру документа" disabled>🔍 Debug</button>
         <button onclick="FAR.migrateLeadingSlashes()" class="btn-migrate" id="btnMigrate" title="Исправить старые документы с ведущим слэшем" disabled>🩹 Fix paths</button>
+        <button onclick="FAR.openGamepadSetup()" id="btnGamepad" title="Настроить джойстик">🎮 Джойстик</button>
         <button onclick="FAR.onAuthButton()" class="btn-auth" id="btnAuth" title="Войти / Выйти">🔐 LogIn</button>
         <span style="color:#a6adc8;font-size:12px;margin-left:auto;" id="statusText">Инициализация…</span>
     </div>
@@ -130,5 +132,6 @@
     <script src="js/30-emulator-viewer.js"></script>
     <!-- Gamepad -->
     <script src="js/31-gamepad.js"></script>
+    <script src="js/32-gamepad-setup.js"></script>
 </body>
 </html>

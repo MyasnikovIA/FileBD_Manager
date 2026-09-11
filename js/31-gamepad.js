@@ -94,6 +94,14 @@ FAR._gamepadHandlePad = function(pad) {
         return;
     }
 
+    // Окно настройки открыто — весь ввод идёт в него
+    const setupModal = document.getElementById('gamepadSetupModal');
+    if (setupModal && !setupModal.classList.contains('hidden')) {
+        FAR._gamepadState.prevButtons[pad.index] = null;
+        FAR._gamepadState.prevAxes[pad.index] = null;
+        return;
+    }
+
     const dbReady = !!FAR.db;
     const buttons = pad.buttons.map(function(b) { return b.pressed; });
     const axes    = pad.axes.slice();
@@ -107,75 +115,51 @@ FAR._gamepadHandlePad = function(pad) {
         return;
     }
 
-    // ============ КНОПКИ ============
-    // Раскладка для "USB Joystick (Vendor:0079 Product:0006)":
-    //   #0 = A, #1 = B, #2 = X, #3 = Y, #9 = Start
-    //
-    // Назначение:
-    //   A (#0)      — войти в папку / открыть файл
-    //   B (#1)      — на уровень выше
-    //   X (#2)      — выделить / снять выделение
-    //   Y (#3)      — обновить список
-    //   Start (#9)  — то же, что A (enter) — как в консольных файловых менеджерах
-    const buttonActions = [
-        [0, 'enter',   true],
-        [1, 'back',    true],
-        [2, 'toggle',  true],
-        [3, 'refresh', true],
-        [9, 'enter',   true]
-    ];
-
-    for (let k = 0; k < buttonActions.length; k++) {
-        const btnIdx = buttonActions[k][0];
-        const action = buttonActions[k][1];
-        const needDb = buttonActions[k][2];
-        if (needDb && !dbReady) continue;
-        if (btnIdx >= buttons.length) continue;
-
-        const pressed    = buttons[btnIdx];
-        const wasPressed = prev[btnIdx];
-
-        if (pressed && !wasPressed) {
-            FAR._gamepadDispatch(action);
-        }
-    }
-
-    // ============ ОСИ — D-Pad ============
+    const map = FAR._gamepadMap || FAR.getGamepadMap();
     const AXIS_THRESHOLD = 0.5;
-    const axisActions = [
-        { axis: 0, neg: 'left',  pos: 'right' },
-        { axis: 1, neg: 'up',    pos: 'down'  }
-    ];
 
-    for (let k = 0; k < axisActions.length; k++) {
-        const cfg = axisActions[k];
-        if (cfg.axis >= axes.length || cfg.axis >= prevAxes.length) continue;
+    // Идём по всем действиям и смотрим, что назначено
+    FAR.GAMEPAD_ACTIONS.forEach(function(action) {
+        const m = map[action.id];
+        if (!m || m.code === null || m.code === undefined) return;
+        if (action.id === 'auth' && !FAR._gamepadHasMapping(map, 'auth')) return;
 
-        const cur = axes[cfg.axis];
-        const old = prevAxes[cfg.axis];
+        if (m.kind === 'button') {
+            const idx = m.code;
+            if (idx >= buttons.length) return;
+            const pressed    = buttons[idx];
+            const wasPressed = prev[idx];
 
-        const curNeg = cur < -AXIS_THRESHOLD;
-        const oldNeg = old < -AXIS_THRESHOLD;
-        const curPos = cur >  AXIS_THRESHOLD;
-        const oldPos = old >  AXIS_THRESHOLD;
+            if (pressed && !wasPressed) {
+                FAR._gamepadDispatch(action.id);
+                if (FAR._gamepadIsRepeatable(action.id)) {
+                    FAR._gamepadStartRepeat(pad.index, 'b' + idx, action.id);
+                }
+            } else if (!pressed && wasPressed) {
+                FAR._gamepadStopRepeat(pad.index, 'b' + idx);
+            }
+        } else if (m.kind === 'axis-neg' || m.kind === 'axis-pos') {
+            const idx = m.code;
+            if (idx >= axes.length || idx >= prevAxes.length) return;
 
-        const keyNeg = 'a' + cfg.axis + '-';
-        const keyPos = 'a' + cfg.axis + '+';
+            const cur = axes[idx];
+            const old = prevAxes[idx];
+            const isNeg = (m.kind === 'axis-neg');
+            const curOn = isNeg ? (cur < -AXIS_THRESHOLD) : (cur >  AXIS_THRESHOLD);
+            const oldOn = isNeg ? (old < -AXIS_THRESHOLD) : (old >  AXIS_THRESHOLD);
 
-        if (curNeg && !oldNeg) {
-            FAR._gamepadDispatch(cfg.neg);
-            FAR._gamepadStartRepeat(pad.index, keyNeg, cfg.neg);
-        } else if (!curNeg && oldNeg) {
-            FAR._gamepadStopRepeat(pad.index, keyNeg);
+            const key = 'a' + idx + (isNeg ? '-' : '+');
+
+            if (curOn && !oldOn) {
+                FAR._gamepadDispatch(action.id);
+                if (FAR._gamepadIsRepeatable(action.id)) {
+                    FAR._gamepadStartRepeat(pad.index, key, action.id);
+                }
+            } else if (!curOn && oldOn) {
+                FAR._gamepadStopRepeat(pad.index, key);
+            }
         }
-
-        if (curPos && !oldPos) {
-            FAR._gamepadDispatch(cfg.pos);
-            FAR._gamepadStartRepeat(pad.index, keyPos, cfg.pos);
-        } else if (!curPos && oldPos) {
-            FAR._gamepadStopRepeat(pad.index, keyPos);
-        }
-    }
+    });
 
     FAR._gamepadState.prevButtons[pad.index] = buttons.slice();
     FAR._gamepadState.prevAxes[pad.index]    = axes.slice();
