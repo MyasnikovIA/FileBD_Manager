@@ -14,6 +14,9 @@ FAR.rightSelectedIdx = new Set();
 FAR.leftAnchor = -1;
 FAR.rightAnchor = -1;
 
+FAR.leftCursor = -1;
+FAR.rightCursor = -1;
+
 FAR.currentFileData = null;
 FAR.currentFileName = '';
 FAR.currentFileType = '';

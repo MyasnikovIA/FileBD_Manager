@@ -57,13 +57,27 @@
     cursor: pointer; transition: background 0.15s;
 }
 .file-item:hover { background: #45475a; }
+
+/* Выделенный элемент (участвует в групповом выделении) */
 .file-item.selected {
     background: #45475a;
     outline: 1px dashed #89b4fa; outline-offset: -1px;
 }
+
+/* Курсор — текущая позиция навигации */
 .file-item.focused {
-    background: #585b70; outline: 1px solid #89b4fa;
+    background: #585b70;
+    outline: 1px solid #89b4fa; outline-offset: -1px;
+    box-shadow: inset 0 0 0 1px #89b4fa;
 }
+
+/* Курсор + выделен (Shift-навигация по диапазону) */
+.file-item.focused.selected {
+    background: #585b70;
+    outline: 1px solid #89b4fa; outline-offset: -1px;
+    box-shadow: inset 0 0 0 1px #89b4fa;
+}
+
 .file-item.parent-dir .name { color: #f9e2af; font-weight: bold; }
 .file-item .name {
     color: #cdd6f4; flex: 1;

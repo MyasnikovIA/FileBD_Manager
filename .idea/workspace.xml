@@ -1,11 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="58b0bec6-76ed-43a5-8023-6ef531bb6bea" name="Default Changelist" comment="" />
+    <list default="true" id="58b0bec6-76ed-43a5-8023-6ef531bb6bea" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/js/02-state.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/02-state.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/js/08-panels.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/08-panels.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/js/22-keyboard.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/22-keyboard.js" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
   <component name="ProjectId" id="3JADtWdfVBUfZ6kxdG9QQiPSRCc" />
   <component name="ProjectViewState">
@@ -38,9 +47,9 @@
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
     <state x="667" y="253" width="585" height="534" key="find.popup/0.0.1920.1040/1920.0.1920.1040@0.0.1920.1040" timestamp="1789096491276" />
-    <state x="623" y="225" width="672" height="678" key="search.everywhere.popup" timestamp="1789095616033">
+    <state x="623" y="225" width="672" height="678" key="search.everywhere.popup" timestamp="1789107695025">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state x="623" y="225" width="672" height="678" key="search.everywhere.popup/0.0.1920.1040/1920.0.1920.1040@0.0.1920.1040" timestamp="1789095616033" />
+    <state x="623" y="225" width="672" height="678" key="search.everywhere.popup/0.0.1920.1040/1920.0.1920.1040@0.0.1920.1040" timestamp="1789107695025" />
   </component>
 </project>
