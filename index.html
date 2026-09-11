@@ -17,8 +17,11 @@
     <link rel="stylesheet" href="css/loading.css">
     <link rel="stylesheet" href="css/toast.css">
     <link rel="stylesheet" href="css/debug.css">
+
     <link rel="stylesheet" href="lib/Pannellum2_5_6/pannellum.css">
     <link rel="stylesheet" href="css/panorama-viewer.css">
+    <link rel="stylesheet" href="css/panorama-editor.css">
+    <link rel="stylesheet" href="css/db-picker.css">
 </head>
 <body>
 
@@ -77,12 +80,15 @@
         <span class="sel-info" id="selInfo"></span>
     </div>
 
-    <!-- Сюда вставляются модальные окна из modals/*.html -->
     <div id="modalRoot"></div>
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- Подключение JS-модулей в порядке зависимостей -->
+    <!-- Pannellum -->
+    <script src="lib/Pannellum2_5_6/pannellum.js"></script>
+    <script src="lib/Pannellum2_5_6/libpannellum.js"></script>
+
+    <!-- Основные модули -->
     <script src="js/01-config.js"></script>
     <script src="js/02-state.js"></script>
     <script src="js/03-utils.js"></script>
@@ -106,8 +112,9 @@
     <script src="js/21-dragdrop.js"></script>
     <script src="js/22-keyboard.js"></script>
     <script src="js/23-main.js"></script>
-    <script src="lib/Pannellum2_5_6/pannellum.js"></script>
-    <script src="lib/Pannellum2_5_6/libpannellum.js"></script>
     <script src="js/24-panorama-viewer.js"></script>
+    <script src="js/25-panorama-db-resolver.js"></script>
+    <script src="js/26-panorama-editor.js"></script>
+    <script src="js/27-db-picker.js"></script>
 </body>
 </html>

@@ -1,11 +1,10 @@
 // ============================================================
 // Загрузка модальных окон из modals/*.html
-// Используется синхронный XHR — работает и на Apache, и с file://
 // ============================================================
 FAR.loadModalFragment = function(path) {
     try {
         const xhr = new XMLHttpRequest();
-        xhr.open('GET', path, false); // синхронно
+        xhr.open('GET', path, false);
         xhr.send(null);
         if (xhr.status === 0 || (xhr.status >= 200 && xhr.status < 300)) {
             return xhr.responseText;
@@ -23,6 +22,8 @@ FAR.injectModals = function() {
         'modals/connection.html',
         'modals/viewer.html',
         'modals/panorama-viewer.html',
+        'modals/panorama-editor.html',
+        'modals/db-picker.html',
         'modals/progress.html',
         'modals/loading.html',
         'modals/debug.html'
@@ -38,25 +39,23 @@ FAR.injectModals = function() {
 // Старт
 // ============================================================
 document.addEventListener('DOMContentLoaded', async function() {
-    // 1. Вставляем модалки в DOM
     FAR.injectModals();
 
-    // 2. Первичная отрисовка и состояние
     FAR.updateAuthUI();
     FAR.renderPanel('left');
     FAR.renderPanel('right');
 
-    // 3. Drag & Drop
     FAR.setupPanelDragDrop('panelLeft');
     FAR.setupPanelDragDrop('panelRight');
 
     window.addEventListener('dragover', function(e) { e.preventDefault(); });
     window.addEventListener('drop',     function(e) { e.preventDefault(); });
 
-    // 4. Горячие клавиши
     FAR.setupKeyboard();
 
-    // 5. Автоподключение
+    // Устанавливаем обёртку Pannellum для загрузки из PouchDB
+    FAR._installPannellumDbWrapper();
+
     const saved = FAR.loadConnFromLS();
     if (saved) {
         FAR.setStatus('🔌 Подключение с сохранёнными данными…');

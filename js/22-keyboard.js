@@ -1,6 +1,12 @@
 FAR.setupKeyboard = function() {
     document.addEventListener('keydown', function(e) {
+        // === ESC: закрываем модалки по приоритету ===
         if (e.key === 'Escape') {
+            const ed = document.getElementById('panoramaEditorModal');
+            if (ed && !ed.classList.contains('hidden')) {
+                FAR.closePanoramaEditor();
+                return;
+            }
             const panoModal = document.getElementById('panoramaViewerModal');
             if (panoModal && !panoModal.classList.contains('hidden')) {
                 FAR.closePanoramaViewer();
@@ -13,26 +19,31 @@ FAR.setupKeyboard = function() {
         if (FAR.progress.active) return;
         if (!FAR.db) return;
 
-        // Не перехватываем навигацию, когда фокус в поле ввода / textarea / contenteditable
+        // Не перехватываем навигацию в полях ввода
         const tag = (e.target && e.target.tagName) || '';
         if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
 
-        // Если открыта модалка подключения — не мешаем
+        // Модалка подключения — не мешаем
         const connModal = document.getElementById('connModal');
         if (connModal && !connModal.classList.contains('hidden')) return;
 
-        // Если открыт просмотрщик — не перехватываем (Esc обработан выше)
+        // Обычный просмотрщик — не перехватываем
         const viewerModal = document.getElementById('viewerModal');
         if (viewerModal && !viewerModal.classList.contains('hidden')) return;
 
-        const panoModal = document.getElementById('panoramaViewerModal');
-        if (panoModal && !panoModal.classList.contains('hidden')) return;
+        // Редактор точек перехода — не перехватываем
+        const edModal = document.getElementById('panoramaEditorModal');
+        if (edModal && !edModal.classList.contains('hidden')) return;
 
+        // Модалка просмотра панорамы — не перехватываем
+        const panoModal2 = document.getElementById('panoramaViewerModal');
+        if (panoModal2 && !panoModal2.classList.contains('hidden')) return;
+
+        // === Навигация курсором ===
         const side  = FAR.activePanel;
         const items = side === 'left' ? FAR.leftFiles : FAR.rightFiles;
         const shift = e.shiftKey;
 
-        // --- Навигация курсором ---
         if (e.key === 'ArrowDown') {
             e.preventDefault();
             FAR.moveCursor(side, +1, { shift });
@@ -81,7 +92,7 @@ FAR.setupKeyboard = function() {
             return;
         }
 
-        // --- Существующие хоткеи ---
+        // === Хоткеи действий ===
         if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
             const selSet = side === 'left' ? FAR.leftSelectedIdx : FAR.rightSelectedIdx;
             selSet.clear();
