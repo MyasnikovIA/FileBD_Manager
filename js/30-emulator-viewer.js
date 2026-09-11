@@ -175,28 +175,27 @@ FAR.openEmulatorViewer = async function(item) {
     await new Promise(function(resolve) { setTimeout(resolve, 50); });
 
     // Настраиваем глобальные переменные EmulatorJS ДО запуска
-    // loader.js сам вызовет EJS_emulator при наличии EJS_player и т.п.
-    window.EJS_player       = '#emulatorRoot';
-    window.EJS_core         = core;
-    window.EJS_gameUrl      = blobUrl;
-    window.EJS_pathtodata   = 'lib/js-emulator/';
-    window.EJS_color        = '#89b4fa';
+    window.EJS_player        = '#emulatorRoot';
+    window.EJS_core          = core;
+    window.EJS_gameUrl       = blobUrl;
+    window.EJS_pathtodata    = 'lib/js-emulator/';
+    window.EJS_color         = '#89b4fa';
     window.EJS_startOnLoaded = true;
 
-    // Если loader.js поддерживает «перезапуск» — сохраняем оригинальный,
-    // чтобы можно было вызвать повторно.
-    if (typeof window.EJS_emulator !== 'undefined' && window.EJS_emulator) {
-        try { window.EJS_emulator.textElem = null; } catch (e) {}
-    }
+    // Гасим возможный авто-старт по клавише
+    FAR._emulatorSuppressEnter();
 
     // Повторно вставляем loader.js, чтобы он создал новый инстанс
-    // (в оригинале он запускается один раз при загрузке).
     try {
         await FAR._runEmulatorLoader(root);
         FAR._emulatorInstance = window.EJS_emulator || null;
         loading.classList.add('hidden');
         FAR.setStatus('🕹️ EmulatorJS: ' + item.name + ' (' + core + ')');
         FAR.toast('Игра запущена: ' + core, 'success');
+
+        // Фокусируем контейнер, чтобы клавиши шли в эмулятор,
+        // а не в панели файлового менеджера.
+        FAR._emulatorFocus(root);
     } catch (e) {
         console.error('openEmulatorViewer: run failed:', e);
         loading.classList.add('hidden');
@@ -205,10 +204,103 @@ FAR.openEmulatorViewer = async function(item) {
 };
 
 /**
- * Повторно запускает loader.js EmulatorJS, пересоздавая инстанс.
- * Делается через клонирование оригинального тега script и его
- * повторную вставку. Если loader.js уже выполнен и повторный запуск
- * не даёт эффекта — используется window.EJS_emulator (если есть).
+ * Гасит повторный старт эмулятора по Enter/Space.
+ * EmulatorJS в некоторых сборках вешает на document обработчик,
+ * который по нажатию Enter заново запускает игру (перечитывает ROM).
+ * Перехватываем keydown в capture-фазе и, если модалка активна,
+ * останавливаем всплытие.
+ *
+ * ВАЖНО: сами клавиши управления игрой при этом НЕ блокируются —
+ * canvas получает их напрямую через свой обработчик.
+ */
+FAR._emulatorSuppressEnter = function() {
+    if (FAR._emulatorKeyHandler) return;
+
+    FAR._emulatorKeyHandler = function(e) {
+        const modal = document.getElementById('emulatorViewerModal');
+        if (!modal || modal.classList.contains('hidden')) return;
+
+        // Enter и Space на документе могут дёргать «Play» в EmulatorJS.
+        // Блокируем только эти два случая, всё остальное пропускаем.
+        if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+        }
+    };
+
+    document.addEventListener('keydown', FAR._emulatorKeyHandler, true);
+};
+
+/**
+ * Переводит фокус на контейнер эмулятора, чтобы клавиатура
+ * уходила в canvas, а не в file-list FAR-менеджера.
+ */
+FAR._emulatorFocus = function(root) {
+    if (!root) return;
+    try {
+        root.setAttribute('tabindex', '0');
+        root.focus();
+    } catch (e) { /* ignore */ }
+};
+
+/**
+ * Полностью выгружает текущий инстанс эмулятора из памяти.
+ * Останавливает RAF-цикл, закрывает AudioContext, снимает
+ * глобальные переменные EmulatorJS и очищает контейнер.
+ */
+FAR._destroyEmulator = function() {
+    // 1. Публичный destroy()
+    try {
+        if (window.EJS_emulator && typeof window.EJS_emulator.destroy === 'function') {
+            window.EJS_emulator.destroy();
+        }
+    } catch (e) { /* ignore */ }
+
+    // 2. Останавливаем внутренние циклы, если destroy не всё покрыл
+    try {
+        if (window.EJS_emulator) {
+            if (typeof window.EJS_emulator.pause === 'function') {
+                window.EJS_emulator.pause();
+            }
+            // Отключаем звук
+            if (window.EJS_emulator.Module && window.EJS_emulator.Module.SDL2) {
+                try { window.EJS_emulator.Module.SDL2.audioContext && window.EJS_emulator.Module.SDL2.audioContext.close(); } catch (e2) {}
+            }
+        }
+    } catch (e) { /* ignore */ }
+
+    // 3. Обнуляем глобальные ссылки EmulatorJS
+    try { window.EJS_emulator = null; } catch (e) {}
+    FAR._emulatorInstance = null;
+
+    // 4. Снимаем наш keydown-перехватчик
+    if (FAR._emulatorKeyHandler) {
+        try {
+            document.removeEventListener('keydown', FAR._emulatorKeyHandler, true);
+        } catch (e) {}
+        FAR._emulatorKeyHandler = null;
+    }
+
+    // 5. Очищаем контейнер от canvas / audio / video
+    const root = document.getElementById('emulatorRoot');
+    if (root) {
+        try {
+            const canvas = root.querySelector('canvas');
+            if (canvas && canvas.parentNode) {
+                canvas.width = 0;
+                canvas.height = 0;
+            }
+        } catch (e) {}
+        root.innerHTML = '';
+    }
+
+    // 6. Убираем фокус, чтобы файловый менеджер снова ловил стрелки
+    try { if (root) root.blur(); } catch (e) {}
+};
+
+/**
+ * Пересоздаёт инстанс EmulatorJS, повторно исполняя loader.js.
+ * Если у эмулятора есть публичный restart() — используется он.
  */
 FAR._runEmulatorLoader = function(rootContainer) {
     return new Promise(function(resolve, reject) {
@@ -221,8 +313,8 @@ FAR._runEmulatorLoader = function(rootContainer) {
             } catch (e) { /* fallthrough */ }
         }
 
-        // Иначе — повторно исполняем loader.js
-        // (ID скрипта меняем, чтобы браузер не закешировал результат)
+        // Иначе — повторно исполняем loader.js.
+        // ID скрипта меняем, чтобы браузер не закешировал результат.
         const old = document.getElementById('ejs-loader-script');
         if (old && old.parentNode) old.parentNode.removeChild(old);
 
@@ -257,21 +349,24 @@ FAR._destroyEmulator = function() {
 };
 
 /**
- * Закрывает модалку EmulatorJS.
+ * Закрывает модалку EmulatorJS и полностью выгружает эмулятор.
  */
 FAR.closeEmulatorViewer = function() {
     const modal = document.getElementById('emulatorViewerModal');
     if (modal) modal.classList.add('hidden');
 
+    // Полная выгрузка эмулятора из памяти
     FAR._destroyEmulator();
 
+    // Чистим Blob URL (ROM)
     FAR._emulatorBlobUrls.forEach(function(u) { try { URL.revokeObjectURL(u); } catch (e) {} });
     FAR._emulatorBlobUrls = [];
 
-    const root = document.getElementById('emulatorRoot');
-    if (root) root.innerHTML = '';
-
+    // Чистим состояние
     FAR._emulatorCurrentItem = null;
+
+    // Возвращаем фокус в документ (панели снова активны)
+    try { document.body.focus(); } catch (e) {}
 };
 
 FAR.closeEmulatorViewerOutside = function(e) {
