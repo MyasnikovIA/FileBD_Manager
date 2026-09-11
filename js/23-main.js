@@ -25,6 +25,7 @@ FAR.injectModals = function() {
         'modals/panorama-editor.html',
         'modals/db-picker.html',
         'modals/jsdos-viewer.html',
+        'modals/nes-viewer.html',
         'modals/progress.html',
         'modals/loading.html',
         'modals/debug.html'

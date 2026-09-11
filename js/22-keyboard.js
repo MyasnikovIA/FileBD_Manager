@@ -17,6 +17,11 @@ FAR.setupKeyboard = function() {
                 FAR.closeJsdosViewer();
                 return;
             }
+            const nesModal = document.getElementById('nesViewerModal');
+            if (nesModal && !nesModal.classList.contains('hidden')) {
+                FAR.closeNesViewer();
+                return;
+            }
             if (!FAR.progress.active) FAR.closeViewer();
             return;
         }
@@ -43,6 +48,10 @@ FAR.setupKeyboard = function() {
         // Модалка просмотра панорамы — не перехватываем
         const panoModal2 = document.getElementById('panoramaViewerModal');
         if (panoModal2 && !panoModal2.classList.contains('hidden')) return;
+
+        // Модалка NES — не перехватываем (стрелки идут в JSNES)
+        const nesModal2 = document.getElementById('nesViewerModal');
+        if (nesModal2 && !nesModal2.classList.contains('hidden')) return;
 
         // === Навигация курсором ===
         const side  = FAR.activePanel;

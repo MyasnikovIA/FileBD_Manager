@@ -11,6 +11,16 @@ FAR.openFile = async function(item) {
         console.warn('Ошибка проверки JSDOS:', e);
     }
 
+    try {
+        if (typeof FAR.isNes === 'function' && FAR.isNes(item)) {
+            await FAR.openNesViewer(item);
+            return;
+        }
+    } catch (e) {
+        console.warn('Ошибка проверки NES:', e);
+    }
+
+
     // Проверяем, является ли файл панорамой 360°
     // (по соотношению сторон ~2:1)
     try {
