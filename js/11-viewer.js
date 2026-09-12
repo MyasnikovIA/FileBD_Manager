@@ -31,6 +31,16 @@ FAR.openFile = async function(item) {
         console.warn('Ошибка проверки EmulatorJS:', e);
     }
 
+  // ===== ПРОВЕРКА 4: PDF =====
+    try {
+        if (typeof FAR.isPdf === 'function' && FAR.isPdf(item)) {
+            await FAR.openPdfViewer(item);
+            return;
+        }
+    } catch (e) {
+        console.warn('Ошибка проверки PDF:', e);
+    }
+
     // Проверяем, является ли файл панорамой 360°
     // (по соотношению сторон ~2:1)
     try {

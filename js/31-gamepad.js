@@ -61,13 +61,22 @@ FAR._gamepadLoop = function() {
 
     try {
         const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+        let found = 0;
         for (let i = 0; i < pads.length; i++) {
             const pad = pads[i];
             if (!pad) continue;
+            found++;
             FAR._gamepadHandlePad(pad);
         }
+        if (found > 0 && !FAR._gamepadState._loggedFound) {
+            FAR._gamepadState._loggedFound = true;
+            FAR._gamepadLog('🎮 Геймпад найден в getGamepads(), обрабатываем.');
+        }
+        if (found === 0) {
+            FAR._gamepadState._loggedFound = false;
+        }
     } catch (e) {
-        // тихо игнорируем — Gamepad API может быть недоступен
+        console.warn('[Gamepad] loop error:', e);
     }
 
     FAR._gamepadState.rafId = requestAnimationFrame(FAR._gamepadLoop);
@@ -77,12 +86,13 @@ FAR._gamepadLoop = function() {
  * Обрабатывает один геймпад.
  */
 FAR._gamepadHandlePad = function(pad) {
-    // Диагностический режим
+    // ===== ДИАГНОСТИКА =====
     if (FAR._gamepadState.debug) {
         FAR._gamepadDebugLog(pad);
         return;
     }
 
+    // Не мешаем игре
     if (FAR._isGameModalOpen()) {
         FAR._gamepadState.prevButtons[pad.index] = null;
         FAR._gamepadState.prevAxes[pad.index] = null;
@@ -94,7 +104,7 @@ FAR._gamepadHandlePad = function(pad) {
         return;
     }
 
-    // Окно настройки открыто — весь ввод идёт в него
+    // Окно настройки джойстика — весь ввод идёт туда
     const setupModal = document.getElementById('gamepadSetupModal');
     if (setupModal && !setupModal.classList.contains('hidden')) {
         FAR._gamepadState.prevButtons[pad.index] = null;
@@ -115,27 +125,42 @@ FAR._gamepadHandlePad = function(pad) {
         return;
     }
 
-    const map = FAR._gamepadMap || FAR.getGamepadMap();
+    // ===== ЗАЩИТА ОТ КОНФЛИКТА auth/enter =====
+    let map = FAR._gamepadMap || FAR.getGamepadMap();
+
+    const enterM = map['enter'];
+    const authM  = map['auth'];
+    if (enterM && authM &&
+        enterM.kind === authM.kind &&
+        enterM.code !== null && enterM.code !== undefined &&
+        enterM.code === authM.code) {
+        map = JSON.parse(JSON.stringify(map));
+        map['auth'] = { kind: 'button', code: null };
+    }
+
     const AXIS_THRESHOLD = 0.5;
 
-    // Идём по всем действиям и смотрим, что назначено
+    // ===== ОБХОД ВСЕХ ДЕЙСТВИЙ =====
     FAR.GAMEPAD_ACTIONS.forEach(function(action) {
         const m = map[action.id];
         if (!m || m.code === null || m.code === undefined) return;
-        if (action.id === 'auth' && !FAR._gamepadHasMapping(map, 'auth')) return;
 
         if (m.kind === 'button') {
             const idx = m.code;
             if (idx >= buttons.length) return;
+
             const pressed    = buttons[idx];
             const wasPressed = prev[idx];
 
             if (pressed && !wasPressed) {
+                // ===== ЛОГ В КОНСОЛЬ =====
+                FAR._gamepadLog('🎮 [Button] #' + idx + ' PRESSED  → действие: ' + action.id);
                 FAR._gamepadDispatch(action.id);
                 if (FAR._gamepadIsRepeatable(action.id)) {
                     FAR._gamepadStartRepeat(pad.index, 'b' + idx, action.id);
                 }
             } else if (!pressed && wasPressed) {
+                FAR._gamepadLog('🎮 [Button] #' + idx + ' released');
                 FAR._gamepadStopRepeat(pad.index, 'b' + idx);
             }
         } else if (m.kind === 'axis-neg' || m.kind === 'axis-pos') {
@@ -151,11 +176,17 @@ FAR._gamepadHandlePad = function(pad) {
             const key = 'a' + idx + (isNeg ? '-' : '+');
 
             if (curOn && !oldOn) {
+                // ===== ЛОГ В КОНСОЛЬ =====
+                FAR._gamepadLog(
+                    '🎮 [Axis ' + idx + '] ' + (isNeg ? 'NEGATIVE' : 'POSITIVE') +
+                    ' (' + cur.toFixed(2) + ') → действие: ' + action.id
+                );
                 FAR._gamepadDispatch(action.id);
                 if (FAR._gamepadIsRepeatable(action.id)) {
                     FAR._gamepadStartRepeat(pad.index, key, action.id);
                 }
             } else if (!curOn && oldOn) {
+                FAR._gamepadLog('🎮 [Axis ' + idx + '] released (значение ' + cur.toFixed(2) + ')');
                 FAR._gamepadStopRepeat(pad.index, key);
             }
         }
@@ -367,5 +398,19 @@ FAR._gamepadDebugLog = function(pad) {
         } else {
             FAR._gamepadState._dbgAxes['axis-' + i] = 0;
         }
+    }
+};
+/**
+ * Пишет строку в консоль. Логи всегда включены — помогают отладить
+ * отсутствие реакции. Если надоест — выставь FAR._gamepadLogEnabled = false.
+ */
+FAR._gamepadLogEnabled = true;
+
+FAR._gamepadLog = function(msg) {
+    if (!FAR._gamepadLogEnabled) return;
+    try {
+        console.log('%c' + msg, 'color:#a6e3a1');
+    } catch (e) {
+        console.log(msg);
     }
 };

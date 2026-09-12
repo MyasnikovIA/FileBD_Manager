@@ -27,9 +27,9 @@ FAR.injectModals = function() {
         'modals/jsdos-viewer.html',
         'modals/nes-viewer.html',
         'modals/emulator-viewer.html',
+        'modals/pdf-viewer.html',
         'modals/progress.html',
         'modals/loading.html',
-        'modals/gamepad-setup.html',
         'modals/debug.html'
     ];
     let html = '';

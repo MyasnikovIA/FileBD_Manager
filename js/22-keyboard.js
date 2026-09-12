@@ -32,6 +32,11 @@ FAR.setupKeyboard = function() {
                 FAR.closeEmulatorViewer();
                 return;
             }
+            const pdfModal = document.getElementById('pdfViewerModal');
+            if (pdfModal && !pdfModal.classList.contains('hidden')) {
+                FAR.closePdfViewer();
+                return;
+            }
             if (!FAR.progress.active) FAR.closeViewer();
             return;
         }
@@ -66,6 +71,10 @@ FAR.setupKeyboard = function() {
         // Модалка EmulatorJS — не перехватываем (стрелки идут в эмулятор)
         const emuModal2 = document.getElementById('emulatorViewerModal');
         if (emuModal2 && !emuModal2.classList.contains('hidden')) return;
+
+        // Модалка PDF — не перехватываем
+        const pdfModal2 = document.getElementById('pdfViewerModal');
+        if (pdfModal2 && !pdfModal2.classList.contains('hidden')) return;
 
         // === Навигация курсором ===
         const side  = FAR.activePanel;

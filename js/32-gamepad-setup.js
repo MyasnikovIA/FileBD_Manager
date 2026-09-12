@@ -4,6 +4,9 @@
 
 FAR.GAMEPAD_LS_KEY = 'filebd_gamepad_map';
 
+// Отладочный лог (true — выводит в консоль состояние live-цикла)
+FAR._gamepadSetupDebugLog = false;
+
 /**
  * Действия, которые можно назначить.
  * 'kind' — 'button' | 'axis-neg' | 'axis-pos'.
@@ -21,12 +24,13 @@ FAR.GAMEPAD_ACTIONS = [
     { id: 'pageUp',  label: '⤒ Страница вверх',       kind: 'button',   code: null },
     { id: 'pageDown',label: '⤓ Страница вниз',        kind: 'button',   code: null },
     { id: 'delete',  label: '🗑️ Удалить (F8)',       kind: 'button',   code: null },
-    { id: 'auth',    label: '🔐 LogIn / LogOut',      kind: 'button',   code: 9 }
+    { id: 'auth',    label: '🔐 LogIn / LogOut',      kind: 'button',   code: null }
 ];
 
-/**
- * Возвращает текущую карту (из localStorage или по умолчанию).
- */
+// ============================================================
+// Карта: чтение / запись в localStorage
+// ============================================================
+
 FAR.getGamepadMap = function() {
     try {
         const raw = localStorage.getItem(FAR.GAMEPAD_LS_KEY);
@@ -37,29 +41,38 @@ FAR.getGamepadMap = function() {
                 FAR.GAMEPAD_ACTIONS.forEach(function(a) {
                     if (!(a.id in obj)) obj[a.id] = { kind: a.kind, code: a.code };
                 });
+
+                // Защита: 'auth' не должен висеть на той же кнопке/оси,
+                // что 'enter' (иначе Start = LogOut).
+                const enterMap = obj['enter'];
+                const authMap  = obj['auth'];
+                if (enterMap && authMap &&
+                    enterMap.kind === authMap.kind &&
+                    enterMap.code !== null && enterMap.code !== undefined &&
+                    enterMap.code === authMap.code) {
+                    obj['auth'] = { kind: 'button', code: null };
+                }
+
                 return obj;
             }
         }
     } catch (e) { /* ignore */ }
+
     const def = {};
     FAR.GAMEPAD_ACTIONS.forEach(function(a) {
         def[a.id] = { kind: a.kind, code: a.code };
     });
+    // По умолчанию 'auth' не назначен — LogIn/LogOut только с клавиатуры.
+    def['auth'] = { kind: 'button', code: null };
     return def;
 };
 
-/**
- * Сохраняет карту в localStorage.
- */
 FAR.saveGamepadMapToLS = function(map) {
     try {
         localStorage.setItem(FAR.GAMEPAD_LS_KEY, JSON.stringify(map));
     } catch (e) { /* ignore */ }
 };
 
-/**
- * Сбрасывает карту к значениям по умолчанию.
- */
 FAR.resetGamepadMap = function() {
     if (!confirm('Сбросить раскладку джойстика по умолчанию?')) return;
     try { localStorage.removeItem(FAR.GAMEPAD_LS_KEY); } catch (e) {}
@@ -68,9 +81,6 @@ FAR.resetGamepadMap = function() {
     FAR.toast('Раскладка сброшена', 'info');
 };
 
-/**
- * Сохраняет текущую карту из UI в localStorage.
- */
 FAR.saveGamepadMap = function() {
     if (!FAR._gamepadSetupDraft) return;
     FAR._gamepadMap = JSON.parse(JSON.stringify(FAR._gamepadSetupDraft));
@@ -85,23 +95,22 @@ FAR.saveGamepadMap = function() {
 
 FAR.openGamepadSetup = function() {
     FAR._gamepadSetupDraft = FAR.getGamepadMap();
-    FAR._gamepadSetupCapturing = null;   // id действия, для которого ждём нажатие
-    FAR._gamepadSetupCaptureTimer = null;
+    FAR._gamepadSetupCapturing = null;
 
     const modal = document.getElementById('gamepadSetupModal');
+    if (!modal) {
+        console.error('[Gamepad Setup] #gamepadSetupModal не найден в DOM');
+        return;
+    }
     modal.classList.remove('hidden');
 
     FAR._gamepadSetupRender();
     FAR._gamepadSetupStartLive();
-    FAR._gamepadSetStatus('Нажмите любую кнопку на джойстике для назначения.', 'waiting');
+    FAR._gamepadSetStatus('Нажмите «🎯 Назначить» напротив нужного действия.', 'waiting');
 };
 
 FAR.closeGamepadSetup = function() {
     FAR._gamepadSetupCapturing = null;
-    if (FAR._gamepadSetupCaptureTimer) {
-        clearTimeout(FAR._gamepadSetupCaptureTimer);
-        FAR._gamepadSetupCaptureTimer = null;
-    }
     FAR._gamepadSetupStopLive();
 
     const modal = document.getElementById('gamepadSetupModal');
@@ -186,13 +195,27 @@ FAR._gamepadSetupStartCapture = function(actionId) {
 };
 
 /**
- * Вызывается из live-цикла, когда зафиксировано изменение состояния
- * кнопки или оси. Возвращает true, если захват состоялся.
+ * Вызывается из live-цикла, когда зафиксировано изменение состояния.
+ * Возвращает true, если захват состоялся (или нужно остаться в режиме).
+ * false — если действие нельзя назначить (например, конфликт auth/enter).
  */
 FAR._gamepadSetupHandleInput = function(kind, code) {
     if (!FAR._gamepadSetupCapturing) return false;
 
     const actionId = FAR._gamepadSetupCapturing;
+
+    // Запрет: 'auth' не может занять ту же кнопку/ось, что 'enter'
+    if (actionId === 'auth') {
+        const enterM = FAR._gamepadSetupDraft['enter'];
+        if (enterM && enterM.kind === kind && enterM.code === code) {
+            FAR._gamepadSetStatus(
+                '⚠️ Эта кнопка уже назначена на «⏎ Войти в папку / открыть». Выберите другую.',
+                'waiting'
+            );
+            return false;
+        }
+    }
+
     FAR._gamepadSetupDraft[actionId] = { kind: kind, code: code };
     FAR._gamepadSetupCapturing = null;
 
@@ -202,12 +225,15 @@ FAR._gamepadSetupHandleInput = function(kind, code) {
 };
 
 // ============================================================
-// Live-отображение состояния геймпада + перехват нажатий
+// Live-цикл: показ состояния геймпада + перехват нажатий
 // ============================================================
 
 FAR._gamepadSetupStartLive = function() {
     if (FAR._gamepadSetupLiveRaf) return;
-    FAR._gamepadSetupPrev = { buttons: null, axes: null };
+
+    // Создаём prev один раз, заполним его на первом кадре
+    FAR._gamepadSetupPrev = null;
+
     FAR._gamepadSetupLiveLoop();
 };
 
@@ -216,6 +242,7 @@ FAR._gamepadSetupStopLive = function() {
         cancelAnimationFrame(FAR._gamepadSetupLiveRaf);
         FAR._gamepadSetupLiveRaf = null;
     }
+    FAR._gamepadSetupPrev = null;
 };
 
 FAR._gamepadSetupLiveLoop = function() {
@@ -236,7 +263,7 @@ FAR._gamepadSetupLiveLoop = function() {
 };
 
 /**
- * Возвращает первый активный геймпад (для live-отображения и захвата).
+ * Возвращает первый активный геймпад.
  */
 FAR._getFirstGamepad = function() {
     try {
@@ -250,46 +277,90 @@ FAR._gamepadSetupUpdateLive = function(pad) {
     const buttons = pad.buttons.map(function(b) { return b.pressed; });
     const axes    = pad.axes.slice();
 
-    // --- Захват изменения: сначала кнопки, потом оси ---
-    if (FAR._gamepadSetupCapturing && FAR._gamepadSetupPrev.buttons) {
-        for (let i = 0; i < buttons.length; i++) {
-            if (buttons[i] && !FAR._gamepadSetupPrev.buttons[i]) {
-                if (FAR._gamepadSetupHandleInput('button', i)) {
-                    // сбрасываем историю, чтобы не срабатывало дважды
-                    FAR._gamepadSetupPrev.buttons = buttons.slice();
-                    FAR._gamepadSetupPrev.axes = axes.slice();
-                    return;
-                }
-            }
-        }
+    if (FAR._gamepadSetupDebugLog) {
+        console.log('[Setup] tick capturing=' + FAR._gamepadSetupCapturing +
+                    ' buttons=' + buttons.filter(Boolean).length +
+                    ' prev=' + (FAR._gamepadSetupPrev ? 'set' : 'null'));
     }
 
-    if (FAR._gamepadSetupCapturing && FAR._gamepadSetupPrev.axes) {
+    // Первый кадр: только запоминаем состояние
+    if (!FAR._gamepadSetupPrev) {
+        FAR._gamepadSetupPrev = {
+            buttons: buttons.slice(),
+            axes: axes.slice()
+        };
+        FAR._gamepadSetupRenderLiveDisplay(buttons, axes, pad);
+        return;
+    }
+
+    const prev = FAR._gamepadSetupPrev;
+
+    // ===== Захват кнопок =====
+    if (FAR._gamepadSetupCapturing) {
+        for (let i = 0; i < buttons.length; i++) {
+            const now = buttons[i];
+            const was = prev.buttons[i] || false;
+            if (now && !was) {
+                // Реальный фронт нажатия
+                const handled = FAR._gamepadSetupHandleInput('button', i);
+                // Обновляем prev в любом случае
+                FAR._gamepadSetupPrev = {
+                    buttons: buttons.slice(),
+                    axes: axes.slice()
+                };
+                FAR._gamepadSetupRenderLiveDisplay(buttons, axes, pad);
+                if (handled) {
+                    if (FAR._gamepadSetupDebugLog) {
+                        console.log('[Setup] Захвачена кнопка #' + i);
+                    }
+                }
+                return;
+            }
+        }
+
+        // ===== Захват осей =====
         const TH = 0.5;
         for (let i = 0; i < axes.length; i++) {
             const cur = axes[i];
-            const old = FAR._gamepadSetupPrev.axes[i] || 0;
+            const old = prev.axes[i] || 0;
+
             if (cur < -TH && old >= -TH) {
-                if (FAR._gamepadSetupHandleInput('axis-neg', i)) {
-                    FAR._gamepadSetupPrev.buttons = buttons.slice();
-                    FAR._gamepadSetupPrev.axes = axes.slice();
-                    return;
+                const handled = FAR._gamepadSetupHandleInput('axis-neg', i);
+                FAR._gamepadSetupPrev = {
+                    buttons: buttons.slice(),
+                    axes: axes.slice()
+                };
+                FAR._gamepadSetupRenderLiveDisplay(buttons, axes, pad);
+                if (handled && FAR._gamepadSetupDebugLog) {
+                    console.log('[Setup] Захвачена ось ' + i + ' (-)');
                 }
+                return;
             }
             if (cur > TH && old <= TH) {
-                if (FAR._gamepadSetupHandleInput('axis-pos', i)) {
-                    FAR._gamepadSetupPrev.buttons = buttons.slice();
-                    FAR._gamepadSetupPrev.axes = axes.slice();
-                    return;
+                const handled = FAR._gamepadSetupHandleInput('axis-pos', i);
+                FAR._gamepadSetupPrev = {
+                    buttons: buttons.slice(),
+                    axes: axes.slice()
+                };
+                FAR._gamepadSetupRenderLiveDisplay(buttons, axes, pad);
+                if (handled && FAR._gamepadSetupDebugLog) {
+                    console.log('[Setup] Захвачена ось ' + i + ' (+)');
                 }
+                return;
             }
         }
     }
 
-    FAR._gamepadSetupPrev.buttons = buttons.slice();
-    FAR._gamepadSetupPrev.axes    = axes.slice();
+    // Обычное обновление prev
+    FAR._gamepadSetupPrev = {
+        buttons: buttons.slice(),
+        axes: axes.slice()
+    };
 
-    // --- Живое отображение ---
+    FAR._gamepadSetupRenderLiveDisplay(buttons, axes, pad);
+};
+
+FAR._gamepadSetupRenderLiveDisplay = function(buttons, axes, pad) {
     const btnBox = document.getElementById('gamepadSetupButtons');
     if (btnBox) {
         let html = '';
@@ -312,20 +383,15 @@ FAR._gamepadSetupUpdateLive = function(pad) {
         axBox.innerHTML = html;
     }
 
-    // Обновляем статус: показываем ID геймпада
     if (!FAR._gamepadSetupCapturing) {
         FAR._gamepadSetStatus('🎮 ' + pad.id + ' (index ' + pad.index + ')', '');
     }
 };
 
 // ============================================================
-// Автоматическое определение и инициализация
+// Автоматическая инициализация при старте
 // ============================================================
 
-/**
- * Запускается при старте приложения. Подтягивает карту из LS
- * и, если геймпад есть, включает его обработку.
- */
 FAR.setupGamepadAuto = function() {
     FAR._gamepadMap = FAR.getGamepadMap();
 
@@ -343,9 +409,6 @@ FAR.setupGamepadAuto = function() {
     }
 };
 
-/**
- * Возвращает true, если у действия есть назначение.
- */
 FAR._gamepadHasMapping = function(map, actionId) {
     const m = map && map[actionId];
     return m && m.code !== null && m.code !== undefined;
