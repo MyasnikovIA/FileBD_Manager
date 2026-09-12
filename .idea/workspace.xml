@@ -20,11 +20,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="58b0bec6-76ed-43a5-8023-6ef531bb6bea" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/js/32-emulator-state-db.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/css/context-menu.css" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/js/34-context-menu.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/index.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/03-utils.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/03-utils.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/30-emulator-viewer.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/30-emulator-viewer.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/js/23-main.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/23-main.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -88,11 +88,11 @@
     <state x="445" y="239" width="555" height="534" key="find.popup/0.0.1280.984/1280.0.1280.984@0.0.1280.984" timestamp="1789142483303" />
     <state x="667" y="253" width="585" height="534" key="find.popup/0.0.1920.1040/1920.0.1920.1040@0.0.1920.1040" timestamp="1789123011035" />
     <state x="2587" y="253" width="585" height="534" key="find.popup/0.0.1920.1040/1920.0.1920.1040@1920.0.1920.1040" timestamp="1789121821724" />
-    <state x="1695" y="213" width="672" height="642" key="search.everywhere.popup" timestamp="1789212719628">
+    <state x="1695" y="213" width="672" height="642" key="search.everywhere.popup" timestamp="1789226213552">
       <screen x="1280" y="0" width="1280" height="984" />
     </state>
     <state x="415" y="213" width="672" height="642" key="search.everywhere.popup/0.0.1280.984/1280.0.1280.984@0.0.1280.984" timestamp="1789212379449" />
-    <state x="1695" y="213" width="672" height="642" key="search.everywhere.popup/0.0.1280.984/1280.0.1280.984@1280.0.1280.984" timestamp="1789212719628" />
+    <state x="1695" y="213" width="672" height="642" key="search.everywhere.popup/0.0.1280.984/1280.0.1280.984@1280.0.1280.984" timestamp="1789226213552" />
     <state x="623" y="225" width="672" height="678" key="search.everywhere.popup/0.0.1920.1040/1920.0.1920.1040@0.0.1920.1040" timestamp="1789122861023" />
     <state x="2543" y="225" width="672" height="678" key="search.everywhere.popup/0.0.1920.1040/1920.0.1920.1040@1920.0.1920.1040" timestamp="1789116297625" />
   </component>
