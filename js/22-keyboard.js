@@ -2,11 +2,6 @@ FAR.setupKeyboard = function() {
     document.addEventListener('keydown', function(e) {
         // === ESC: закрываем модалки по приоритету ===
         if (e.key === 'Escape') {
-            const gpSetup = document.getElementById('gamepadSetupModal');
-            if (gpSetup && !gpSetup.classList.contains('hidden')) {
-                FAR.closeGamepadSetup();
-                return;
-            }
             const ed = document.getElementById('panoramaEditorModal');
             if (ed && !ed.classList.contains('hidden')) {
                 FAR.closePanoramaEditor();
@@ -17,24 +12,29 @@ FAR.setupKeyboard = function() {
                 FAR.closePanoramaViewer();
                 return;
             }
-            const jsdosModal = document.getElementById('jsdosViewerModal');
-            if (jsdosModal && !jsdosModal.classList.contains('hidden')) {
+            const jsdosModalEsc = document.getElementById('jsdosViewerModal');
+            if (jsdosModalEsc && !jsdosModalEsc.classList.contains('hidden')) {
                 FAR.closeJsdosViewer();
                 return;
             }
-            const nesModal = document.getElementById('nesViewerModal');
-            if (nesModal && !nesModal.classList.contains('hidden')) {
+            const nesModalEsc = document.getElementById('nesViewerModal');
+            if (nesModalEsc && !nesModalEsc.classList.contains('hidden')) {
                 FAR.closeNesViewer();
                 return;
             }
-            const emuModal = document.getElementById('emulatorViewerModal');
-            if (emuModal && !emuModal.classList.contains('hidden')) {
+            const emuModalEsc = document.getElementById('emulatorViewerModal');
+            if (emuModalEsc && !emuModalEsc.classList.contains('hidden')) {
                 FAR.closeEmulatorViewer();
                 return;
             }
-            const pdfModal = document.getElementById('pdfViewerModal');
-            if (pdfModal && !pdfModal.classList.contains('hidden')) {
+            const pdfModalEsc = document.getElementById('pdfViewerModal');
+            if (pdfModalEsc && !pdfModalEsc.classList.contains('hidden')) {
                 FAR.closePdfViewer();
+                return;
+            }
+            const gpSetupEsc = document.getElementById('gamepadSetupModal');
+            if (gpSetupEsc && !gpSetupEsc.classList.contains('hidden')) {
+                FAR.closeGamepadSetup();
                 return;
             }
             if (!FAR.progress.active) FAR.closeViewer();
@@ -64,6 +64,10 @@ FAR.setupKeyboard = function() {
         const panoModal2 = document.getElementById('panoramaViewerModal');
         if (panoModal2 && !panoModal2.classList.contains('hidden')) return;
 
+        // Модалка JSDOS — не перехватываем (ввод идёт в дос-эмулятор)
+        const jsdosModal2 = document.getElementById('jsdosViewerModal');
+        if (jsdosModal2 && !jsdosModal2.classList.contains('hidden')) return;
+
         // Модалка NES — не перехватываем (стрелки идут в JSNES)
         const nesModal2 = document.getElementById('nesViewerModal');
         if (nesModal2 && !nesModal2.classList.contains('hidden')) return;
@@ -75,6 +79,10 @@ FAR.setupKeyboard = function() {
         // Модалка PDF — не перехватываем
         const pdfModal2 = document.getElementById('pdfViewerModal');
         if (pdfModal2 && !pdfModal2.classList.contains('hidden')) return;
+
+        // Окно настройки джойстика — не перехватываем
+        const gpSetup2 = document.getElementById('gamepadSetupModal');
+        if (gpSetup2 && !gpSetup2.classList.contains('hidden')) return;
 
         // === Навигация курсором ===
         const side  = FAR.activePanel;

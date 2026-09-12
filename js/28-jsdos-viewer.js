@@ -82,15 +82,10 @@ FAR.openJsdosViewer = async function(item) {
     await new Promise(function(resolve) { setTimeout(resolve, 50); });
 
     // Запускаем DOS
-    // Запускаем DOS
     try {
-        // Вычисляем абсолютный URL папки lib/js-dos
         const pathPrefix = new URL('lib/js-dos/', window.location.href).href;
         console.log('JSDOS: pathPrefix =', pathPrefix);
 
-        // ВАЖНО: js-dos v8 ищет wdosbox.js и wdosbox.wasm через
-        // глобальный объект emulators.pathPrefix. Устанавливаем его
-        // ДО создания инстанса Dos.
         if (typeof window.emulators !== 'undefined') {
             window.emulators.pathPrefix = pathPrefix;
             console.log('JSDOS: emulators.pathPrefix установлен');
@@ -99,8 +94,6 @@ FAR.openJsdosViewer = async function(item) {
         }
 
         FAR._jsdosInstance = window.Dos(root, {
-            // Оставляем и эти параметры — на случай, если библиотека
-            // всё-таки их учитывает (v7 использовал wdosboxUrl).
             wdosboxUrl: pathPrefix + 'wdosbox.js',
             pathPrefix: pathPrefix
         });
@@ -118,6 +111,10 @@ FAR.openJsdosViewer = async function(item) {
         loading.classList.add('hidden');
         FAR.setStatus('🕹️ JSDOS: ' + item.name);
         FAR.toast('Игра запущена', 'success');
+
+        // Переводим фокус в эмулятор, чтобы Enter/стрелки
+        // шли в JSDOS, а не в панели файлового менеджера
+        FAR._jsdosFocus(root);
 
     } catch (e) {
         console.error('openJsdosViewer: run failed:', e);
@@ -148,6 +145,10 @@ FAR.closeJsdosViewer = function() {
     const root = document.getElementById('jsdosRoot');
     if (root) root.innerHTML = '';
 
+    // Возвращаем фокус в файловый менеджер, чтобы стрелки и Enter
+    // снова обрабатывались панелями FAR
+    FAR._jsdosBlur(root);
+
     FAR._jsdosCurrentItem = null;
 };
 
@@ -171,4 +172,48 @@ FAR.downloadCurrentJsdos = async function() {
     } catch (e) {
         FAR.toast('Ошибка скачивания: ' + e.message, 'error');
     }
+};
+
+/**
+ * Переводит фокус на контейнер JSDOS, чтобы клавиатура уходила
+ * внутрь эмулятора, а не в панели файлового менеджера.
+ */
+FAR._jsdosFocus = function(root) {
+    if (!root) return;
+
+    try {
+        root.setAttribute('tabindex', '0');
+        root.focus();
+    } catch (e) { /* ignore */ }
+
+    // JSDOS создаёт внутри .jsdos-root свой canvas. Пробуем
+    // сфокусировать его тоже — некоторые версии DOSBox слушают
+    // клавиатуру именно на canvas.
+    try {
+        const canvas = root.querySelector('canvas');
+        if (canvas) {
+            canvas.setAttribute('tabindex', '0');
+            canvas.focus();
+        }
+    } catch (e) { /* ignore */ }
+};
+
+/**
+ * Снимает фокус с контейнера JSDOS и возвращает его в файловый
+ * менеджер, чтобы клавиши снова обрабатывались панелями FAR.
+ */
+FAR._jsdosBlur = function(root) {
+    try {
+        if (root) root.blur();
+    } catch (e) { /* ignore */ }
+
+    try {
+        if (document.activeElement && document.activeElement !== document.body) {
+            document.activeElement.blur();
+        }
+    } catch (e) { /* ignore */ }
+
+    try {
+        document.body.focus();
+    } catch (e) { /* ignore */ }
 };
