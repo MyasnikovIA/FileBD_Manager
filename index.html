@@ -45,6 +45,11 @@
         <button onclick="FAR.migrateLeadingSlashes()" class="btn-migrate" id="btnMigrate" title="Исправить старые документы с ведущим слэшем" disabled>🩹 Fix paths</button>
         <button onclick="FAR.openGamepadSetup()" id="btnGamepad" title="Настроить джойстик">🎮 Джойстик</button>
         <button onclick="FAR.onAuthButton()" class="btn-auth" id="btnAuth" title="Войти / Выйти">🔐 LogIn</button>
+        <button onclick="FAR.gamepadModeCycle()"
+                oncontextmenu="event.preventDefault(); FAR.openGamepadSetup();"
+                class="gp-mode-indicator gp-mode-files"
+                id="gpModeIndicator"
+                title="ЛКМ — переключить режим, ПКМ — настройка">🎮 Файлы</button>
         <span style="color:#a6adc8;font-size:12px;margin-left:auto;" id="statusText">Инициализация…</span>
     </div>
 

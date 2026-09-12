@@ -6,27 +6,22 @@
         </div>
 
         <div class="modal-body">
-            <div class="gamepad-status" id="gamepadSetupStatus">
-                Ожидание джойстика… Нажмите любую кнопку или двиньте стик.
+            <div class="gp-setup-status" id="gpSetupStatus">
+                Ожидание джойстика…
             </div>
 
-            <p class="gamepad-hint">
-                Для каждой строки нажмите кнопку на джойстике, чтобы назначить её на действие.
-                Затем нажмите <b>💾 Сохранить</b>.
+            <p class="gp-setup-hint">
+                Каждому слоту можно назначить <b>кнопку/ось джойстика</b> (🎯) и <b>клавишу</b> (⌨️),
+                которая будет эмулироваться в активном окне. Действие слота зависит от выбранного
+                режима (Files / Keyboard / Both) — переключить его можно в тулбаре.
             </p>
 
-            <div class="gamepad-actions-list" id="gamepadActionsList"></div>
-
-            <div class="gamepad-live" id="gamepadSetupLive">
-                <div class="gamepad-live-title">Текущее состояние джойстика:</div>
-                <div class="gamepad-live-buttons" id="gamepadSetupButtons"></div>
-                <div class="gamepad-live-axes" id="gamepadSetupAxes"></div>
-            </div>
+            <div class="gp-setup-actions-list" id="gpSetupActionsList"></div>
         </div>
 
         <div class="modal-footer">
-            <span id="gamepadSetupFooter"></span>
-            <button class="btn-cancel" onclick="FAR.resetGamepadMap()">↺ По умолчанию</button>
+            <span id="gpSetupFooter"></span>
+            <button class="btn-secondary" onclick="FAR.resetGamepadMap()">↺ По умолчанию</button>
             <button class="btn-save" onclick="FAR.saveGamepadMap()">💾 Сохранить</button>
         </div>
     </div>

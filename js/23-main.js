@@ -94,3 +94,4 @@ document.addEventListener('DOMContentLoaded', async function() {
         FAR.openConnModal(true);
     }
 });
+
