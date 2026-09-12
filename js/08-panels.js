@@ -81,11 +81,11 @@ FAR.setActivePanel = function(side) {
     FAR.activePanel = side;
     document.getElementById('panelLeft').classList.toggle('active', side === 'left');
     document.getElementById('panelRight').classList.toggle('active', side === 'right');
-    // Перерисовываем обе панели, чтобы обновить класс .focused
     FAR.renderPanel('left');
     FAR.renderPanel('right');
     FAR.updateSelectionInfo();
     FAR.updateButtons();
+    FAR.saveUiState();
 };
 
 FAR.goToParent = function(side) {
@@ -107,6 +107,7 @@ FAR.goToParent = function(side) {
         FAR.rightCursor = -1;
     }
     FAR.renderPanel(side);
+    FAR.saveUiState();
 };
 
 FAR.navigatePanel = function(side, action) {
@@ -132,6 +133,7 @@ FAR.navigatePanel = function(side, action) {
         FAR.rightCursor = -1;
     }
     FAR.renderPanel(side);
+    FAR.saveUiState();
 };
 
 FAR.handleItemClick = function(event, side, index) {
@@ -145,6 +147,7 @@ FAR.handleItemClick = function(event, side, index) {
         if (side === 'left') { FAR.leftSelectedIdx.clear(); FAR.leftAnchor = -1; }
         else { FAR.rightSelectedIdx.clear(); FAR.rightAnchor = -1; }
         FAR.renderPanel(side);
+        FAR.saveUiState();
         return;
     }
 
@@ -175,6 +178,7 @@ FAR.handleItemClick = function(event, side, index) {
         else FAR.rightAnchor = index;
     }
     FAR.renderPanel(side);
+    FAR.saveUiState();
 };
 
 FAR.handleItemDblClick = async function(side, index) {
@@ -201,6 +205,7 @@ FAR.handleItemDblClick = async function(side, index) {
             FAR.rightCursor = -1;
         }
         FAR.renderPanel(side);
+        FAR.saveUiState();
     } else {
         await FAR.openFile(item);
     }
@@ -307,13 +312,9 @@ FAR.moveCursor = function(side, delta, options) {
     const shift = !!options.shift;
 
     if (shift) {
-        // Расширяем выделение от anchor до newCursor.
-        // Виртуальный ".." (индекс -1) в выделение не входит — оно только для файлов.
         if (newCursor === -1) {
-            // Курсор на "..", выделение сбрасываем
             selSet.clear();
         } else if (anchor === -1 || anchor === undefined) {
-            // Якорь был на ".." — начинаем выделение с newCursor
             selSet.clear();
             selSet.add(newCursor);
             if (side === 'left') FAR.leftAnchor = newCursor;
@@ -325,7 +326,6 @@ FAR.moveCursor = function(side, delta, options) {
             for (let i = from; i <= to; i++) selSet.add(i);
         }
     } else {
-        // Обычное перемещение
         if (newCursor === -1) {
             selSet.clear();
             if (side === 'left') FAR.leftAnchor = -1;
@@ -343,4 +343,5 @@ FAR.moveCursor = function(side, delta, options) {
 
     FAR.renderPanel(side);
     FAR.scrollCursorIntoView(side);
+    FAR.saveUiState();
 };

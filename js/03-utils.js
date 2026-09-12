@@ -84,3 +84,143 @@ FAR.loadScriptOnce = function (src) {
 
     return FAR._loadedScripts[src];
 };
+
+// ============================================================
+// Сохранение/восстановление положения курсора (localStorage)
+// ============================================================
+
+/**
+ * Сохраняет текущее состояние панелей в localStorage.
+ * Вызывается при любом изменении активной панели, пути или курсора.
+ */
+FAR.saveUiState = function() {
+    try {
+        const state = {
+            activePanel: FAR.activePanel,
+            leftPath: FAR.leftPath,
+            rightPath: FAR.rightPath,
+            leftCursor: FAR.leftCursor,
+            rightCursor: FAR.rightCursor,
+            // Запоминаем и имя файла — на случай, если порядок
+            // элементов поменялся (например, после удаления/создания)
+            leftFile: FAR._getFileAt(FAR.leftFiles, FAR.leftCursor),
+            rightFile: FAR._getFileAt(FAR.rightFiles, FAR.rightCursor)
+        };
+        localStorage.setItem(FAR.LS_UI_KEY, JSON.stringify(state));
+    } catch (e) {
+        /* localStorage может быть недоступен — молча игнорируем */
+    }
+};
+
+/**
+ * Читает сохранённое состояние панелей из localStorage.
+ * Возвращает объект или null.
+ */
+FAR.loadUiState = function() {
+    try {
+        const raw = localStorage.getItem(FAR.LS_UI_KEY);
+        if (!raw) return null;
+        const obj = JSON.parse(raw);
+        if (!obj || typeof obj !== 'object') return null;
+        return obj;
+    } catch (e) {
+        return null;
+    }
+};
+
+/**
+ * Возвращает имя файла в списке по индексу или '' если индекса нет.
+ * Нужно, чтобы запомнить не только позицию, но и имя.
+ */
+FAR._getFileAt = function(list, idx) {
+    if (!list || idx === null || idx === undefined) return '';
+    if (idx < 0 || idx >= list.length) return '';
+    const item = list[idx];
+    if (!item) return '';
+    return item.name || '';
+};
+
+/**
+ * Восстанавливает состояние панелей из localStorage.
+ * Вызывается после того, как загружены файлы (FAR.loadFiles).
+ * Возвращает true, если что-то было восстановлено.
+ */
+FAR.restoreUiState = function() {
+    const st = FAR.loadUiState();
+    if (!st) return false;
+
+    if (st.activePanel === 'left' || st.activePanel === 'right') {
+        FAR.activePanel = st.activePanel;
+        const pl = document.getElementById('panelLeft');
+        const pr = document.getElementById('panelRight');
+        if (pl && pr) {
+            pl.classList.toggle('active', st.activePanel === 'left');
+            pr.classList.toggle('active', st.activePanel === 'right');
+        }
+    }
+
+    if (typeof st.leftPath === 'string' && st.leftPath) {
+        FAR.leftPath = st.leftPath;
+    }
+    if (typeof st.rightPath === 'string' && st.rightPath) {
+        FAR.rightPath = st.rightPath;
+    }
+
+    // Перерисовываем обе панели — renderPanel сам подрежет
+    // курсор под размер списка, если файл пропал.
+    FAR.renderPanel('left');
+    FAR.renderPanel('right');
+
+    // Восстанавливаем курсор на панелях: сначала пробуем по имени,
+    // если файл найден — ставим на него; иначе — по индексу.
+    FAR._restoreCursor('left', st.leftFile, st.leftCursor);
+    FAR._restoreCursor('right', st.rightFile, st.rightCursor);
+
+    // Перерисовываем ещё раз, чтобы отобразить новый курсор
+    FAR.renderPanel('left');
+    FAR.renderPanel('right');
+
+    return true;
+};
+
+/**
+ * Ставит курсор на панели.
+ * Приоритет: файл с заданным именем; если такого нет — индекс.
+ */
+FAR._restoreCursor = function(side, fileName, cursorIdx) {
+    const files = side === 'left' ? FAR.leftFiles : FAR.rightFiles;
+    let idx = -1;
+
+    if (fileName) {
+        idx = files.findIndex(function(f) { return f.name === fileName; });
+    }
+
+    if (idx === -1 && typeof cursorIdx === 'number' && cursorIdx >= 0 && cursorIdx < files.length) {
+        idx = cursorIdx;
+    }
+
+    if (idx < 0) {
+        if (side === 'left') {
+            FAR.leftCursor = -1;
+            FAR.leftSelectedIdx.clear();
+            FAR.leftAnchor = -1;
+        } else {
+            FAR.rightCursor = -1;
+            FAR.rightSelectedIdx.clear();
+            FAR.rightAnchor = -1;
+        }
+        return;
+    }
+
+    if (side === 'left') {
+        FAR.leftCursor = idx;
+        FAR.leftSelectedIdx.clear();
+        FAR.leftSelectedIdx.add(idx);
+        FAR.leftAnchor = idx;
+    } else {
+        FAR.rightCursor = idx;
+        FAR.rightSelectedIdx.clear();
+        FAR.rightSelectedIdx.add(idx);
+        FAR.rightAnchor = idx;
+    }
+};

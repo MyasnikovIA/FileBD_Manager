@@ -28,6 +28,7 @@ FAR.injectModals = function() {
         'modals/nes-viewer.html',
         'modals/emulator-viewer.html',
         'modals/pdf-viewer.html',
+        'modals/gamepad-setup.html',
         'modals/progress.html',
         'modals/loading.html',
         'modals/debug.html'
@@ -77,6 +78,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             await FAR.loadFiles();
             FAR.renderPanel('left');
             FAR.renderPanel('right');
+            FAR.restoreUiState();
         } catch (e) {
             FAR.hideLoading();
             console.error('auto-connect error:', e);
