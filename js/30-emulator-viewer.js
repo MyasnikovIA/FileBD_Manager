@@ -100,7 +100,7 @@ FAR._loadEmulatorLoader = function() {
 /**
  * Открывает игру в полноэкранной модалке EmulatorJS.
  */
-FAR.openEmulatorViewer = async function(item) {
+FAR.openEmulatorViewer = async function (item) {
     if (!FAR.ensureDb()) return;
     if (typeof FAR._ensureItemName === 'function') {
         FAR._ensureItemName(item);
@@ -137,12 +137,22 @@ FAR.openEmulatorViewer = async function(item) {
     loading.classList.remove('hidden');
     loadingText.textContent = 'Загрузка библиотеки эмулятора…';
 
-    // Сбрасываем старый инстанс
     FAR._destroyEmulator();
-
-    // Очищаем контейнер
     root.innerHTML = '';
     root.id = 'emulatorRoot';
+
+    // ============ ХУКИ СОСТОЯНИЙ — ДО loader.js ============
+    loadingText.textContent = 'Загрузка модуля сохранений…';
+    try {
+        if (typeof FAR._installEmulatorStateHooks !== 'function') {
+            await FAR.loadScriptOnce('js/32-emulator-state-db.js');
+        }
+        FAR._installEmulatorStateHooks();
+    } catch (e) {
+        console.warn('[EmuState] Не удалось загрузить модуль состояний:', e);
+        // Не критично — эмулятор запустится, но сохраняться будет по-старому
+    }
+    // ======================================================
 
     // Загружаем ROM
     let blobUrl = null;
@@ -159,7 +169,8 @@ FAR.openEmulatorViewer = async function(item) {
         return;
     }
 
-    // Загружаем loader.js динамически
+    // Загружаем loader.js EmulatorJS
+    loadingText.textContent = 'Загрузка библиотеки эмулятора…';
     try {
         await FAR._loadEmulatorLoader();
     } catch (e) {
@@ -170,31 +181,23 @@ FAR.openEmulatorViewer = async function(item) {
     }
 
     loadingText.textContent = 'Инициализация…';
+    await new Promise(function (resolve) { setTimeout(resolve, 50); });
 
-    // Даём модалке отрисоваться
-    await new Promise(function(resolve) { setTimeout(resolve, 50); });
-
-    // Настраиваем глобальные переменные EmulatorJS ДО запуска
-    window.EJS_player        = '#emulatorRoot';
-    window.EJS_core          = core;
-    window.EJS_gameUrl       = blobUrl;
-    window.EJS_pathtodata    = 'lib/js-emulator/';
-    window.EJS_color         = '#89b4fa';
+    window.EJS_player       = '#emulatorRoot';
+    window.EJS_core         = core;
+    window.EJS_gameUrl      = blobUrl;
+    window.EJS_pathtodata   = 'lib/js-emulator/';
+    window.EJS_color        = '#89b4fa';
     window.EJS_startOnLoaded = true;
 
-    // Гасим возможный авто-старт по клавише
     FAR._emulatorSuppressEnter();
 
-    // Повторно вставляем loader.js, чтобы он создал новый инстанс
     try {
         await FAR._runEmulatorLoader(root);
         FAR._emulatorInstance = window.EJS_emulator || null;
         loading.classList.add('hidden');
         FAR.setStatus('🕹️ EmulatorJS: ' + item.name + ' (' + core + ')');
         FAR.toast('Игра запущена: ' + core, 'success');
-
-        // Фокусируем контейнер, чтобы клавиши шли в эмулятор,
-        // а не в панели файлового менеджера.
         FAR._emulatorFocus(root);
     } catch (e) {
         console.error('openEmulatorViewer: run failed:', e);

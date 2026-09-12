@@ -59,3 +59,28 @@ FAR.normPath = function(p) {
     s = s.replace(/\/+/g, '/');
     return s;
 };
+
+/**
+ * Загружает внешний скрипт ровно один раз.
+ * Возвращает Promise, который резолвится после загрузки.
+ * Повторные вызовы с тем же src возвращают тот же Promise.
+ */
+FAR._loadedScripts = FAR._loadedScripts || {};
+
+FAR.loadScriptOnce = function (src) {
+    if (FAR._loadedScripts[src]) return FAR._loadedScripts[src];
+
+    FAR._loadedScripts[src] = new Promise(function (resolve, reject) {
+        const s = document.createElement('script');
+        s.src = src;
+        s.async = true;
+        s.onload = function () { resolve(); };
+        s.onerror = function () {
+            delete FAR._loadedScripts[src];
+            reject(new Error('Не удалось загрузить ' + src));
+        };
+        document.head.appendChild(s);
+    });
+
+    return FAR._loadedScripts[src];
+};
