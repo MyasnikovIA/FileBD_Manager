@@ -2,12 +2,12 @@
 // Просмотр игр через EmulatorJS в полноэкранной модалке
 // ============================================================
 
-FAR._emulatorInstance = null;     // Ссылка на созданный EJS-инстанс (если нужна)
-FAR._emulatorCurrentItem = null;  // fileIndex-элемент текущей игры
-FAR._emulatorBlobUrls = [];       // Созданные Blob URL для очистки
-FAR._ejsLoadPromise = null;       // Promise загрузки loader.js
-FAR._ejsLoaderInjected = false;   // Флаг: loader.js уже вставлен в DOM
-FAR._ejsOriginalGameUrl = null;   // Оригинальный EJS_gameUrl (если был)
+FAR._emulatorInstance = null;
+FAR._emulatorCurrentItem = null;
+FAR._emulatorBlobUrls = [];
+FAR._ejsLoaderPromise = null;     // Promise загрузки loader.js (одноразовый)
+FAR._ejsLibraryLoaded = false;    // Флаг: loader.js + emulator.min.js уже загружены в window
+FAR._emulatorKeyHandler = null;
 
 // --- Карта расширений → ядро EmulatorJS (без NES!) ---
 FAR.EMULATOR_EXT_TO_CORE = {
@@ -48,53 +48,77 @@ FAR.EMULATOR_EXT_TO_CORE = {
     'xpet': 'vice_xpet'
 };
 
-/**
- * Возвращает ядро EmulatorJS для файла, либо null.
- * NES обрабатывается отдельным модулем 29-nes-viewer.js.
- */
 FAR._getEmulatorCore = function(item) {
     if (!item || item.isFolder) return null;
     const ext = (item.name.split('.').pop() || '').toLowerCase();
-    if (ext === 'nes') return null;  // NES — отдельный просмотрщик
+    if (ext === 'nes') return null;
     return FAR.EMULATOR_EXT_TO_CORE[ext] || null;
 };
 
-/**
- * Проверяет, поддерживается ли файл EmulatorJS.
- */
 FAR.isEmulatorFile = function(item) {
     return FAR._getEmulatorCore(item) !== null;
 };
 
 /**
- * Динамически подгружает loader.js EmulatorJS (один раз).
+ * Загружает loader.js один раз за сессию и ждёт появления window.EJS_emulator.
+ *
+ * ВАЖНО:
+ *   • loader.js — одноразовый. Его повторная вставка приводит к повторной
+ *     загрузке emulator.min.js и фатальному SyntaxError
+ *     "Identifier 'EJS_STORAGE' has already been declared".
+ *   • onload тега <script> срабатывает ДО завершения async IIFE внутри
+ *     loader.js, поэтому ждём не onload, а появление window.EJS_emulator.
+ *   • window.EJS_player должен быть установлен ДО вставки loader.js,
+ *     иначе внутри loader.js строка `new EmulatorJS(EJS_player, config)`
+ *     упадёт с ReferenceError.
+ *
  * Возвращает Promise<void>.
  */
 FAR._loadEmulatorLoader = function() {
-    if (FAR._ejsLoaderInjected) {
+    if (FAR._ejsLibraryLoaded && window.EmulatorJS) {
         return Promise.resolve();
     }
-    if (FAR._ejsLoadPromise) {
-        return FAR._ejsLoadPromise;
+    if (FAR._ejsLoaderPromise) {
+        return FAR._ejsLoaderPromise;
     }
 
-    FAR._ejsLoadPromise = new Promise(function(resolve, reject) {
+    FAR._ejsLoaderPromise = new Promise(function(resolve, reject) {
         const script = document.createElement('script');
         script.src = 'lib/js-emulator/loader.js';
         script.async = true;
-        script.onload = function() {
-            FAR._ejsLoaderInjected = true;
-            console.log('[EmulatorJS] loader.js загружен');
-            resolve();
+
+        // Не используем onload: он стреляет до завершения async IIFE.
+        // Опрашиваем window.EmulatorJS по таймеру.
+        let elapsed = 0;
+        const STEP = 50;
+        const TIMEOUT = 30000;
+
+        const poll = function() {
+            if (typeof window.EmulatorJS === 'function') {
+                FAR._ejsLibraryLoaded = true;
+                console.log('[EmulatorJS] loader.js выполнен, window.EmulatorJS доступен');
+                resolve();
+                return;
+            }
+            elapsed += STEP;
+            if (elapsed >= TIMEOUT) {
+                FAR._ejsLoaderPromise = null;
+                reject(new Error('loader.js не завершился за ' + TIMEOUT + ' мс'));
+                return;
+            }
+            setTimeout(poll, STEP);
         };
+
         script.onerror = function() {
-            FAR._ejsLoadPromise = null;
+            FAR._ejsLoaderPromise = null;
             reject(new Error('Не удалось загрузить lib/js-emulator/loader.js'));
         };
+
         document.head.appendChild(script);
+        setTimeout(poll, STEP);
     });
 
-    return FAR._ejsLoadPromise;
+    return FAR._ejsLoaderPromise;
 };
 
 /**
@@ -141,7 +165,7 @@ FAR.openEmulatorViewer = async function (item) {
     root.innerHTML = '';
     root.id = 'emulatorRoot';
 
-    // ============ ХУКИ СОСТОЯНИЙ — ДО loader.js ============
+    // ==== ХУКИ СОСТОЯНИЙ — ДО создания эмулятора ====
     loadingText.textContent = 'Загрузка модуля сохранений…';
     try {
         if (typeof FAR._installEmulatorStateHooks !== 'function') {
@@ -150,11 +174,10 @@ FAR.openEmulatorViewer = async function (item) {
         FAR._installEmulatorStateHooks();
     } catch (e) {
         console.warn('[EmuState] Не удалось загрузить модуль состояний:', e);
-        // Не критично — эмулятор запустится, но сохраняться будет по-старому
     }
-    // ======================================================
+    // ================================================
 
-    // Загружаем ROM
+    // ==== Загрузка ROM ====
     let blobUrl = null;
     try {
         const { data, contentType } = await FAR.readFileBody(item);
@@ -169,35 +192,19 @@ FAR.openEmulatorViewer = async function (item) {
         return;
     }
 
-    // Загружаем loader.js EmulatorJS
-    loadingText.textContent = 'Загрузка библиотеки эмулятора…';
-    try {
-        await FAR._loadEmulatorLoader();
-        if (window.EJS_emulator && window.EJS_emulator.config && window.EJS_emulator.config.langJson) {
-            window._farEjsLangJson = window.EJS_emulator.config.langJson;
-            window.EJS_language = window.EJS_emulator.config.language || 'ru';
-        }
-    } catch (e) {
-        console.error('[EmulatorJS] load failed:', e);
-        loading.classList.add('hidden');
-        FAR.toast('Не удалось загрузить эмулятор: ' + e.message, 'error');
-        return;
-    }
-
-    loadingText.textContent = 'Инициализация…';
-    await new Promise(function (resolve) { setTimeout(resolve, 50); });
-
-    window.EJS_player       = '#emulatorRoot';
-    window.EJS_core         = core;
-    window.EJS_gameUrl      = blobUrl;
-    window.EJS_pathtodata   = 'lib/js-emulator/';
-    window.EJS_color        = '#89b4fa';
+    // ==== Готовим EJS_* глобалы ДО loader.js ====
+    // loader.js читает window.EJS_player на верхнем уровне.
+    window.EJS_player        = '#emulatorRoot';
+    window.EJS_core          = core;
+    window.EJS_gameUrl       = blobUrl;
+    window.EJS_pathtodata    = 'lib/js-emulator/';
+    window.EJS_color         = '#89b4fa';
     window.EJS_startOnLoaded = true;
 
     FAR._emulatorSuppressEnter();
 
     try {
-        await FAR._runEmulatorLoader(root);
+        await FAR._runEmulator(root, blobUrl);
         FAR._emulatorInstance = window.EJS_emulator || null;
         loading.classList.add('hidden');
         FAR.setStatus('🕹️ EmulatorJS: ' + item.name + ' (' + core + ')');
@@ -211,15 +218,81 @@ FAR.openEmulatorViewer = async function (item) {
 };
 
 /**
- * Гасит повторный старт эмулятора по Enter/Space.
- * EmulatorJS в некоторых сборках вешает на document обработчик,
- * который по нажатию Enter заново запускает игру (перечитывает ROM).
- * Перехватываем keydown в capture-фазе и, если модалка активна,
- * останавливаем всплытие.
+ * Запускает эмулятор.
  *
- * ВАЖНО: сами клавиши управления игрой при этом НЕ блокируются —
- * canvas получает их напрямую через свой обработчик.
+ * Первый запуск за сессию:
+ *   – подгружает loader.js, ждёт window.EmulatorJS, затем loader.js сам
+ *     создаёт window.EJS_emulator (потому что window.EJS_player установлен).
+ *
+ * Последующие запуски:
+ *   – loader.js больше НЕ вставляется (это привело бы к повторной загрузке
+ *     emulator.min.js и SyntaxError). Вместо этого создаём новый инстанс
+ *     EmulatorJS напрямую: new window.EmulatorJS('#emulatorRoot', config).
  */
+FAR._runEmulator = async function(rootContainer, blobUrl) {
+    if (!FAR._ejsLibraryLoaded) {
+        // ===== ПЕРВЫЙ ЗАПУСК ЗА СЕССИЮ =====
+        // loader.js сам вызовет new EmulatorJS(EJS_player, config) в конце
+        // своей async IIFE. Мы лишь ждём появления window.EmulatorJS.
+        await FAR._loadEmulatorLoader();
+
+        // Теперь нужно дождаться, пока loader.js дойдёт до строки
+        // `window.EJS_emulator = new EmulatorJS(...)`. Это происходит
+        // ПОСЛЕ асинхронной загрузки языка (await fetch).
+        // Ждём появления window.EJS_emulator.
+        await FAR._waitForEjsEmulator(blobUrl);
+
+        return;
+    }
+
+    // ===== ПОВТОРНЫЙ ЗАПУСК =====
+    // Библиотека уже загружена, loader.js повторно не вставляем.
+    // Создаём новый инстанс EmulatorJS вручную.
+    return new Promise(function(resolve, reject) {
+        FAR._createEmulatorInstance(rootContainer, resolve, reject);
+    });
+};
+
+/**
+ * Ждёт, пока loader.js создаст window.EJS_emulator.
+ * loader.js читает window.EJS_gameUrl и сравнивает с ним — чтобы не
+ * принять чужой инстанс от предыдущего запуска, проверяем, что
+ * window.EJS_emulator существует и его конфиг указывает на актуальный blobUrl.
+ */
+FAR._waitForEjsEmulator = function(expectedUrl) {
+    return new Promise(function(resolve, reject) {
+        let elapsed = 0;
+        const STEP = 50;
+        const TIMEOUT = 30000;
+
+        const check = function() {
+            const emu = window.EJS_emulator;
+            if (emu) {
+                // Проверяем, что это свежий инстанс, а не оставшийся от прошлого раза.
+                // У EmulatorJS поле config.gameUrl — то, что мы передали.
+                try {
+                    if (emu.config && emu.config.gameUrl === expectedUrl) {
+                        resolve();
+                        return;
+                    }
+                } catch (e) { /* ignore */ }
+
+                // Если config недоступен — считаем, что инстанс свежий.
+                resolve();
+                return;
+            }
+            elapsed += STEP;
+            if (elapsed >= TIMEOUT) {
+                reject(new Error('loader.js не создал window.EJS_emulator за ' + TIMEOUT + ' мс'));
+                return;
+            }
+            setTimeout(check, STEP);
+        };
+
+        setTimeout(check, STEP);
+    });
+};
+
 FAR._emulatorSuppressEnter = function() {
     if (FAR._emulatorKeyHandler) return;
 
@@ -227,8 +300,6 @@ FAR._emulatorSuppressEnter = function() {
         const modal = document.getElementById('emulatorViewerModal');
         if (!modal || modal.classList.contains('hidden')) return;
 
-        // Enter и Space на документе могут дёргать «Play» в EmulatorJS.
-        // Блокируем только эти два случая, всё остальное пропускаем.
         if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {
             e.stopImmediatePropagation();
             e.preventDefault();
@@ -238,10 +309,6 @@ FAR._emulatorSuppressEnter = function() {
     document.addEventListener('keydown', FAR._emulatorKeyHandler, true);
 };
 
-/**
- * Переводит фокус на контейнер эмулятора, чтобы клавиатура
- * уходила в canvas, а не в file-list FAR-менеджера.
- */
 FAR._emulatorFocus = function(root) {
     if (!root) return;
     try {
@@ -251,75 +318,13 @@ FAR._emulatorFocus = function(root) {
 };
 
 /**
- * Создаёт (или пересоздаёт) инстанс EmulatorJS.
- * Библиотека emulator.min.js и loader.js исполняются ровно один раз —
- * повторное <script src="emulator.min.js"> приводит к SyntaxError
- * "Identifier 'EJS_STORAGE' has already been declared".
- *
- * Поэтому:
- *   1. Первый раз — грузим loader.js как обычно.
- *   2. Второй и последующие — просто заново создаём
- *      new window.EmulatorJS(...) с теми же EJS_* настройками.
- */
-FAR._runEmulatorLoader = function(rootContainer) {
-    return new Promise(function(resolve, reject) {
-        // Если loader.js уже был загружен ранее — библиотека есть.
-        // Не перезагружаем её, а сами создаём инстанс EmulatorJS.
-        if (window.EmulatorJS && window._ejsLoaderInjected) {
-            try {
-                // Страховка: nipplejs должен быть определён (нужен
-                // для setVirtualGamepad). Если сборка его потеряла —
-                // подгрузим один раз вручную.
-                if (typeof window.nipplejs === 'undefined') {
-                    FAR._ensureNipplejs().then(function() {
-                        FAR._createEmulatorInstance(resolve, reject);
-                    }).catch(function(e) {
-                        // Если nipplejs не удалось — всё равно пробуем
-                        console.warn('[EmulatorJS] nipplejs недоступен:', e);
-                        FAR._createEmulatorInstance(resolve, reject);
-                    });
-                    return;
-                }
-                FAR._createEmulatorInstance(resolve, reject);
-            } catch (e) {
-                reject(e);
-            }
-            return;
-        }
-
-        // Первый запуск: грузим loader.js.
-        // ID скрипта меняем, чтобы не запутаться при отладке.
-        const old = document.getElementById('ejs-loader-script');
-        if (old && old.parentNode) old.parentNode.removeChild(old);
-
-        const script = document.createElement('script');
-        script.id = 'ejs-loader-script';
-        script.src = 'lib/js-emulator/loader.js?ts=' + Date.now();
-        script.async = false;
-        script.onload = function() {
-            window._ejsLoaderInjected = true;
-            // Даём EmulatorJS время создать canvas
-            setTimeout(resolve, 200);
-        };
-        script.onerror = function() {
-            reject(new Error('Ошибка загрузки loader.js'));
-        };
-        document.head.appendChild(script);
-    });
-};
-
-/**
  * Создаёт новый инстанс EmulatorJS с текущими EJS_* настройками.
- * Библиотека уже определена (window.EmulatorJS), поэтому просто
- * вызываем конструктор.
+ * Используется при повторных запусках, когда библиотека уже загружена.
  */
-FAR._createEmulatorInstance = function(resolve, reject) {
+FAR._createEmulatorInstance = function(rootContainer, resolve, reject) {
     try {
-        // Отдаём управление EmulatorJS: он сам создаст свой
-        // canvas, кнопку Start, меню и т.п. внутри rootContainer.
         const playerSelector = '#' + (rootContainer && rootContainer.id ? rootContainer.id : 'emulatorRoot');
 
-        // Собираем конфиг из тех же EJS_* глобалов, что использует loader.js.
         const config = {
             gameUrl:        window.EJS_gameUrl,
             dataPath:       window.EJS_pathtodata,
@@ -369,10 +374,8 @@ FAR._createEmulatorInstance = function(resolve, reject) {
             langJson:       window._farEjsLangJson || null
         };
 
-        // Создаём инстанс
         window.EJS_emulator = new window.EmulatorJS(playerSelector, config);
 
-        // Регистрируем хуки сохранения/загрузки состояний (если модуль 32 загружен)
         if (typeof FAR._emuStateOnSave === 'function') {
             try {
                 window.EJS_emulator.on('saveState', FAR._emuStateOnSave);
@@ -384,18 +387,12 @@ FAR._createEmulatorInstance = function(resolve, reject) {
             }
         }
 
-        // Ждём готовности канваса
         setTimeout(resolve, 200);
     } catch (e) {
         reject(e);
     }
 };
 
-
-/**
- * Один раз подгружает nipplejs.js, если сборка EmulatorJS его не
- * предоставила. nipplejs нужен для setVirtualGamepad.
- */
 FAR._ensureNipplejs = function() {
     if (typeof window.nipplejs !== 'undefined') return Promise.resolve();
     if (FAR._nipplejsPromise) return FAR._nipplejsPromise;
@@ -414,15 +411,12 @@ FAR._ensureNipplejs = function() {
 
 /**
  * Полностью выгружает текущий инстанс эмулятора EmulatorJS из памяти.
- * ВАЖНО: не удаляет глобальные классы EmulatorJS (EJS_STORAGE,
- * EJS_GameManager, EJS_COMPRESSION, EmulatorJS) — они определены
- * один раз и повторно не объявляются.
+ * Глобальные классы НЕ удаляются — они объявлены один раз за сессию.
  */
 FAR._destroyEmulator = function() {
     const emu = window.EJS_emulator;
 
     if (emu) {
-        // Отключаем звук
         try {
             if (emu.Module && emu.Module.AL && emu.Module.AL.currentCtx &&
                 emu.Module.AL.currentCtx.audioCtx) {
@@ -430,7 +424,6 @@ FAR._destroyEmulator = function() {
             }
         } catch (e) {}
 
-        // Приостанавливаем главный цикл
         try {
             if (emu.gameManager && typeof emu.gameManager.toggleMainLoop === 'function') {
                 emu.gameManager.toggleMainLoop(0);
@@ -442,11 +435,9 @@ FAR._destroyEmulator = function() {
             }
         } catch (e) {}
 
-        // Штатный destroy
         try { if (typeof emu.pause === 'function') emu.pause(true); } catch (e) {}
         try { if (typeof emu.destroy === 'function') emu.destroy(); } catch (e) {}
 
-        // Жёстко убиваем WASM-инстанс
         try {
             if (emu.Module && typeof emu.Module.abort === 'function') {
                 emu.Module.abort();
@@ -454,7 +445,6 @@ FAR._destroyEmulator = function() {
         } catch (e) {}
     }
 
-    // Снимаем наш keydown-перехватчик
     if (FAR._emulatorKeyHandler) {
         try {
             document.removeEventListener('keydown', FAR._emulatorKeyHandler, true);
@@ -462,12 +452,10 @@ FAR._destroyEmulator = function() {
         FAR._emulatorKeyHandler = null;
     }
 
-    // Обнуляем сам инстанс — при следующем открытии создадим новый
     try { window.EJS_emulator = null; } catch (e) {}
 
     FAR._emulatorInstance = null;
 
-    // Чистим Blob URL
     if (FAR._emulatorBlobUrls && FAR._emulatorBlobUrls.length) {
         FAR._emulatorBlobUrls.forEach(function(u) {
             try { URL.revokeObjectURL(u); } catch (e) {}
@@ -475,8 +463,6 @@ FAR._destroyEmulator = function() {
         FAR._emulatorBlobUrls = [];
     }
 
-    // Очищаем контейнер — EmulatorJS создаст в нём новый canvas
-    // при следующем запуске.
     const root = document.getElementById('emulatorRoot');
     if (root) {
         try {
@@ -500,9 +486,6 @@ FAR.closeEmulatorViewerOutside = function(e) {
     if (e.target === e.currentTarget) FAR.closeEmulatorViewer();
 };
 
-/**
- * Скачивает оригинальный ROM-файл.
- */
 FAR.downloadCurrentEmulator = async function() {
     if (!FAR._emulatorCurrentItem) {
         FAR.toast('Нет активной игры', 'warning');
@@ -517,18 +500,13 @@ FAR.downloadCurrentEmulator = async function() {
         FAR.toast('Ошибка скачивания: ' + e.message, 'error');
     }
 };
-/**
- * Закрывает модалку EmulatorJS и полностью выгружает эмулятор
- * из памяти браузера.
- */
+
 FAR.closeEmulatorViewer = function() {
     const modal = document.getElementById('emulatorViewerModal');
     if (modal) modal.classList.add('hidden');
 
-    // Полная выгрузка эмулятора
     FAR._destroyEmulator();
 
-    // На случай, если что-то осталось — чистим ещё раз
     FAR._emulatorBlobUrls.forEach(function(u) {
         try { URL.revokeObjectURL(u); } catch (e) {}
     });
@@ -536,7 +514,5 @@ FAR.closeEmulatorViewer = function() {
 
     FAR._emulatorCurrentItem = null;
 
-    // Возвращаем фокус в документ, чтобы стрелки/Enter снова
-    // обрабатывались файловым менеджером
     try { document.body.focus(); } catch (e) {}
 };
