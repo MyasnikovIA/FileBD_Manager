@@ -2,7 +2,15 @@
     <div class="modal-content pano-modal-content" onclick="event.stopPropagation()">
         <div class="modal-header">
             <h3 id="panoramaViewerTitle">🌐 Просмотр панорамы</h3>
-            <button class="close-btn" onclick="FAR.closePanoramaViewer()">✕</button>
+            <div class="modal-header-actions">
+                <button class="viewer-nav-btn" id="panoPrevBtn"
+                        onclick="FAR.viewerNavigate(-1)"
+                        title="Предыдущий файл">◀</button>
+                <button class="viewer-nav-btn" id="panoNextBtn"
+                        onclick="FAR.viewerNavigate(+1)"
+                        title="Следующий файл">▶</button>
+                <button class="close-btn" onclick="FAR.closePanoramaViewer()">✕</button>
+            </div>
         </div>
         <div class="modal-body pano-modal-body">
             <div id="panoramaCanvas" class="panorama-canvas"></div>
@@ -21,4 +29,3 @@
         </div>
     </div>
 </div>
-

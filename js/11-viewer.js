@@ -1,5 +1,5 @@
 // ============================================================
-// Универсальный просмотрщик файлов
+// Универсальный просмотрщик файлов + навигация ◀ / ▶
 // ============================================================
 // Поддерживает:
 //   • JSDOS-игры (.jsdos)
@@ -13,12 +13,168 @@
 //
 // В мульти-БД режиме вторым аргументом приходит side ('left'/'right'),
 // чтобы читать тело файла из БД ИМЕННО этой панели, а не активной.
+//
+// Навигация по файлам панели:
+//   • состояние хранится в FAR._viewerSide / FAR._viewerIndex;
+//   • кнопки #viewerPrevBtn/#viewerNextBtn, #panoPrevBtn/#panoNextBtn,
+//     #pdfPrevBtn/#pdfNextBtn, #jsdosPrevBtn/#jsdosNextBtn,
+//     #nesPrevBtn/#nesNextBtn, #emuPrevBtn/#emuNextBtn;
+//   • переключаются только файлы (папки пропускаются);
+//   • на границах списка соответствующая кнопка скрывается.
 // ============================================================
 
-FAR.openFile = async function(item, side) {
+// --- Состояние навигации просмотрщика ---
+FAR._viewerSide  = null;   // 'left' | 'right' — панель, из которой открыт файл
+FAR._viewerIndex = -1;     // индекс открытого файла в FAR.side[side].files
+
+// --- Все модалки-просмотрщики и их кнопки навигации ---
+FAR.VIEWER_MODALS = [
+    { modal: 'viewerModal',            prev: 'viewerPrevBtn', next: 'viewerNextBtn' },
+    { modal: 'panoramaViewerModal',    prev: 'panoPrevBtn',   next: 'panoNextBtn'   },
+    { modal: 'pdfViewerModal',         prev: 'pdfPrevBtn',    next: 'pdfNextBtn'    },
+    { modal: 'jsdosViewerModal',       prev: 'jsdosPrevBtn',  next: 'jsdosNextBtn'  },
+    { modal: 'nesViewerModal',         prev: 'nesPrevBtn',    next: 'nesNextBtn'    },
+    { modal: 'emulatorViewerModal',    prev: 'emuPrevBtn',    next: 'emuNextBtn'    }
+];
+
+/**
+ * Ищет ближайший файл (не папку) в направлении dir (-1 | +1)
+ * начиная с позиции fromIndex. Возвращает индекс или -1.
+ */
+FAR._viewerFindFileIndex = function (side, fromIndex, dir) {
+    const ctx = FAR.side[side];
+    const files = ctx ? ctx.files : null;
+    if (!files || files.length === 0) return -1;
+
+    let i = fromIndex + dir;
+    while (i >= 0 && i < files.length) {
+        const it = files[i];
+        if (it && !it.isFolder) return i;
+        i += dir;
+    }
+    return -1;
+};
+
+/**
+ * Пытается определить индекс элемента item в списке панели side.
+ */
+FAR._viewerResolveIndex = function (side, item) {
+    if (!side || !item) return -1;
+    const ctx = FAR.side[side];
+    if (!ctx || !Array.isArray(ctx.files)) return -1;
+
+    if (item._id) {
+        for (let i = 0; i < ctx.files.length; i++) {
+            const f = ctx.files[i];
+            if (f && f._id === item._id) return i;
+        }
+    }
+    if (item.path) {
+        const np = FAR.normPath(item.path);
+        for (let i = 0; i < ctx.files.length; i++) {
+            const f = ctx.files[i];
+            if (f && FAR.normPath(f.path) === np) return i;
+        }
+    }
+    return -1;
+};
+
+/**
+ * Обновляет видимость кнопок ◀ / ▶ во ВСЕХ модалках-просмотрщиках.
+ * Модалки, которых нет в DOM, молча пропускаются.
+ */
+FAR._viewerUpdateNavButtons = function () {
+    const side  = FAR._viewerSide;
+    const index = FAR._viewerIndex;
+
+    let prevIdx = -1;
+    let nextIdx = -1;
+
+    if (side && FAR.side[side] && index >= 0) {
+        prevIdx = FAR._viewerFindFileIndex(side, index, -1);
+        nextIdx = FAR._viewerFindFileIndex(side, index, +1);
+    }
+
+    FAR.VIEWER_MODALS.forEach(function (pair) {
+        const prevBtn = document.getElementById(pair.prev);
+        const nextBtn = document.getElementById(pair.next);
+        if (prevBtn) prevBtn.classList.toggle('hidden', prevIdx < 0);
+        if (nextBtn) nextBtn.classList.toggle('hidden', nextIdx < 0);
+    });
+};
+
+/**
+ * Закрывает все модалки-просмотрщики (не трогая их внутреннее
+ * состояние — им занимаются соответствующие close*).
+ * Используется только как страховка перед открытием следующего файла.
+ */
+FAR._viewerCloseAll = function () {
+    try { if (typeof FAR.closeViewer        === 'function') FAR.closeViewer();        } catch (e) {}
+    try { if (typeof FAR.closePanoramaViewer=== 'function') FAR.closePanoramaViewer();} catch (e) {}
+    try { if (typeof FAR.closePdfViewer     === 'function') FAR.closePdfViewer();     } catch (e) {}
+    try { if (typeof FAR.closeJsdosViewer   === 'function') FAR.closeJsdosViewer();   } catch (e) {}
+    try { if (typeof FAR.closeNesViewer     === 'function') FAR.closeNesViewer();     } catch (e) {}
+    try { if (typeof FAR.closeEmulatorViewer=== 'function') FAR.closeEmulatorViewer();} catch (e) {}
+};
+
+/**
+ * Переключает просмотрщик на предыдущий (-1) или следующий (+1)
+ * файл в текущей панели. Папки пропускаются.
+ *
+ * Логика сквозная: неважно, каким просмотрщиком открыт текущий файл.
+ * Если следующий файл — картинка, откроется обычный просмотрщик;
+ * если панорама — панорамный, и т.д. Выбор делает openFile().
+ */
+FAR.viewerNavigate = async function (dir) {
+    const side  = FAR._viewerSide;
+    const index = FAR._viewerIndex;
+    if (!side || index < 0) return;
+
+    const targetIdx = FAR._viewerFindFileIndex(side, index, dir);
+    if (targetIdx < 0) {
+        FAR._viewerUpdateNavButtons();
+        return;
+    }
+
+    const files = FAR.side[side].files;
+    const item  = files[targetIdx];
+    if (!item) return;
+
+    // Запоминаем новую позицию ДО открытия,
+    // чтобы кнопки сразу отрисовались корректно
+    const prevSide  = FAR._viewerSide;
+    const prevIndex = FAR._viewerIndex;
+    FAR._viewerSide  = side;
+    FAR._viewerIndex = targetIdx;
+
+    // Закрываем все модалки-просмотрщики. Это важно, когда мы
+    // уходим с панорамы/PDF/эмулятора на другой тип файла —
+    // иначе старая модалка останется висеть.
+    FAR._viewerCloseAll();
+
+    // openFile сам решит, какой просмотрщик использовать
+    try {
+        await FAR.openFile(item, side, targetIdx);
+    } catch (e) {
+        console.error('viewerNavigate:', e);
+        // Откат к прежней позиции при ошибке
+        FAR._viewerSide  = prevSide;
+        FAR._viewerIndex = prevIndex;
+        FAR._viewerUpdateNavButtons();
+        FAR.toast('Не удалось открыть файл: ' + e.message, 'error');
+    }
+};
+
+/**
+ * Открывает файл в подходящем просмотрщике.
+ *
+ * @param {Object} item    — элемент из fileIndex (file, не folder)
+ * @param {string} [side]  — 'left' | 'right' (по умолчанию активная панель)
+ * @param {number} [index] — индекс в FAR.side[side].files (если известен)
+ */
+FAR.openFile = async function (item, side, index) {
     side = side || FAR.activePanel;
 
-    // Проверяем, что у этой панели есть БД
     const ctx = FAR.side[side];
     if (!ctx || !ctx.db) {
         FAR.toast('Панель не подключена к БД', 'warning');
@@ -26,30 +182,39 @@ FAR.openFile = async function(item, side) {
         return;
     }
 
-    // ===== ПРОВЕРКА 1: JSDOS-файл =====
+    // Запоминаем сторону и индекс для навигации
+    FAR._viewerSide = side;
+    FAR._viewerIndex = (typeof index === 'number' && index >= 0)
+        ? index
+        : FAR._viewerResolveIndex(side, item);
+
+    // ===== ПРОВЕРКА 1: JSDOS =====
     try {
         if (typeof FAR.isJsdos === 'function' && FAR.isJsdos(item)) {
             await FAR.openJsdosViewer(item, side);
+            FAR._viewerUpdateNavButtons();
             return;
         }
     } catch (e) {
         console.warn('Ошибка проверки JSDOS:', e);
     }
 
-    // ===== ПРОВЕРКА 2: NES-файл =====
+    // ===== ПРОВЕРКА 2: NES =====
     try {
         if (typeof FAR.isNes === 'function' && FAR.isNes(item)) {
             await FAR.openNesViewer(item, side);
+            FAR._viewerUpdateNavButtons();
             return;
         }
     } catch (e) {
         console.warn('Ошибка проверки NES:', e);
     }
 
-    // ===== ПРОВЕРКА 3: EmulatorJS-файл =====
+    // ===== ПРОВЕРКА 3: EmulatorJS =====
     try {
         if (typeof FAR.isEmulatorFile === 'function' && FAR.isEmulatorFile(item)) {
             await FAR.openEmulatorViewer(item, side);
+            FAR._viewerUpdateNavButtons();
             return;
         }
     } catch (e) {
@@ -60,17 +225,19 @@ FAR.openFile = async function(item, side) {
     try {
         if (typeof FAR.isPdf === 'function' && FAR.isPdf(item)) {
             await FAR.openPdfViewer(item, side);
+            FAR._viewerUpdateNavButtons();
             return;
         }
     } catch (e) {
         console.warn('Ошибка проверки PDF:', e);
     }
 
-    // ===== ПРОВЕРКА 5: Панорама 360° =====
+    // ===== ПРОВЕРКА 5: Панорама =====
     try {
         const isPano = await FAR.isPanorama(item, side);
         if (isPano) {
             await FAR.openPanoramaViewer(item, side);
+            FAR._viewerUpdateNavButtons();
             return;
         }
     } catch (e) {
@@ -87,6 +254,8 @@ FAR.openFile = async function(item, side) {
     title.textContent = `📄 ${item.name}`;
     body.innerHTML = '<div style="text-align:center;padding:40px;color:#a6adc8;">Загрузка…</div>';
     info.textContent = '';
+
+    FAR._viewerUpdateNavButtons();
 
     try {
         const { data, contentType } = await FAR.readFileBodyFromSide(side, item);
@@ -126,12 +295,15 @@ FAR.openFile = async function(item, side) {
         body.innerHTML = `<div style="color:#f38ba8;">Ошибка: ${FAR.escapeHtml(e.message)}</div>`;
         info.textContent = 'Ошибка';
     }
+
+    FAR._viewerUpdateNavButtons();
 };
 
 FAR.closeViewer = function() {
     document.getElementById('viewerModal').classList.add('hidden');
     document.getElementById('viewerBody').innerHTML = '';
     FAR.currentFileData = null;
+    FAR._viewerUpdateNavButtons();
 };
 
 FAR.closeViewerOutside = function(e) {

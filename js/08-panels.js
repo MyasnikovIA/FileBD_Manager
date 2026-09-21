@@ -209,7 +209,7 @@ FAR.handleItemDblClick = async function(side, index) {
         FAR.renderPanel(side);
         FAR.saveUiState();
     } else {
-        await FAR.openFile(item, side);
+        await FAR.openFile(item, side, index);
     }
 };
 

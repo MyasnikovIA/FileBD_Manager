@@ -87,3 +87,34 @@
     color: #89b4fa;
     font-weight: 600;
 }
+
+/* Правая группа кнопок в шапке: ◀ ▶ ✕ */
+.modal-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;      /* прижимает группу вправо, если header — flex */
+    flex-shrink: 0;
+}
+
+
+/* Кнопки навигации ◀ / ▶ */
+.viewer-nav-btn {
+    background: transparent;
+    border: 1px solid #45475a;
+    color: #cdd6f4;
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: background 0.15s ease;
+}
+.viewer-nav-btn:hover {
+    background: #313244;
+}
+.viewer-nav-btn.hidden {
+    visibility: hidden;
+    pointer-events: none;
+}

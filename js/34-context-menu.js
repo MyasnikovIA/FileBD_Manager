@@ -133,7 +133,6 @@ FAR._ctxRenderMenu = function () {
     menu.appendChild(title);
 
     // ==== Пункты меню ====
-    // Каждый пункт — { label, icon, enabled, danger, action }
     const entries = [];
 
     // Открыть — только для файла/папки, и только если есть БД
@@ -145,7 +144,7 @@ FAR._ctxRenderMenu = function () {
             if (isFolder) {
                 FAR.handleItemDblClick(side, index);
             } else {
-                FAR.openFile(item);
+                FAR.openFile(item, side, index);   // ← БЫЛО: FAR.openFile(item);
             }
         }
     });

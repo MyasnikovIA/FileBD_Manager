@@ -2,7 +2,15 @@
     <div class="modal-content nes-modal-content" onclick="event.stopPropagation()">
         <div class="modal-header">
             <h3 id="nesViewerTitle">🎮 NES</h3>
-            <button class="close-btn" onclick="FAR.closeNesViewer()">✕</button>
+            <div class="modal-header-actions">
+                <button class="viewer-nav-btn" id="nesPrevBtn"
+                        onclick="FAR.viewerNavigate(-1)"
+                        title="Предыдущий файл">◀</button>
+                <button class="viewer-nav-btn" id="nesNextBtn"
+                        onclick="FAR.viewerNavigate(+1)"
+                        title="Следующий файл">▶</button>
+                <button class="close-btn" onclick="FAR.closeNesViewer()">✕</button>
+            </div>
         </div>
         <div class="modal-body nes-modal-body">
             <div id="nesRoot" class="nes-root"></div>
