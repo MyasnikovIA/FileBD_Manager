@@ -691,11 +691,26 @@ FAR._panoAttachDblClickHandler = function() {
 // Синхронизация активной панели файлового менеджера
 // ============================================================
 
-FAR._selectFileInPanel = function(item) {
+// ============================================================
+// Синхронизация активной панели файлового менеджера
+// ============================================================
+
+/**
+ * Выделяет файл item в панели side, при необходимости переключает
+ * панель на директорию файла, ставит курсор и прокручивает к нему.
+ *
+ * @param {Object} item     — элемент fileIndex (с полем path)
+ * @param {string} [side]   — 'left' | 'right'; по умолчанию активная панель
+ */
+FAR._selectFileInPanel = function(item, side) {
     if (!item || !item.path) return;
     if (typeof FAR._ensureItemName === 'function') {
         FAR._ensureItemName(item);
     }
+
+    side = side || FAR.activePanel;
+    const ctx = FAR.side[side];
+    if (!ctx) return;
 
     const targetPath = FAR.normPath(item.path);
     if (!targetPath) return;
@@ -704,76 +719,59 @@ FAR._selectFileInPanel = function(item) {
         ? targetPath.substring(0, targetPath.lastIndexOf('/'))
         : '';
 
-    const tryPanel = function(side) {
-        const currentPath = side === 'left' ? FAR.leftPath : FAR.rightPath;
-        const currentDir = FAR.normPath(currentPath);
-        if (currentDir === dir) {
-            const files = side === 'left' ? FAR.leftFiles : FAR.rightFiles;
-            const idx = files.findIndex(function(f) {
-                return FAR.normPath(f.path) === targetPath;
-            });
-            if (idx >= 0) {
-                if (side === 'left') {
-                    FAR.leftSelectedIdx.clear();
-                    FAR.leftSelectedIdx.add(idx);
-                    FAR.leftCursor = idx;
-                    FAR.leftAnchor = idx;
-                } else {
-                    FAR.rightSelectedIdx.clear();
-                    FAR.rightSelectedIdx.add(idx);
-                    FAR.rightCursor = idx;
-                    FAR.rightAnchor = idx;
-                }
-                FAR.setActivePanel(side);
-                FAR.renderPanel(side);
-                if (typeof FAR.scrollCursorIntoView === 'function') {
-                    FAR.scrollCursorIntoView(side);
-                }
-                return true;
-            }
+    // --- Вспомогательная: попытаться выделить файл в этой панели ---
+    const trySelect = function(s) {
+        const c = FAR.side[s];
+        if (!c) return false;
+
+        const currentDir = FAR.normPath(c.path);
+        if (currentDir !== dir) return false;
+
+        const files = c.files || [];
+        const idx = files.findIndex(function(f) {
+            return FAR.normPath(f.path) === targetPath;
+        });
+        if (idx < 0) return false;
+
+        c.selectedIdx.clear();
+        c.selectedIdx.add(idx);
+        c.cursor = idx;
+        c.anchor = idx;
+
+        FAR.renderPanel(s);
+        if (typeof FAR.scrollCursorIntoView === 'function') {
+            FAR.scrollCursorIntoView(s);
         }
-        return false;
+        FAR.saveUiState();
+        return true;
     };
 
-    if (tryPanel(FAR.activePanel)) return;
+    // 1. Пробуем выделить в целевой панели
+    if (trySelect(side)) return;
 
-    const other = FAR.activePanel === 'left' ? 'right' : 'left';
-    if (tryPanel(other)) return;
-
-    const side = FAR.activePanel;
+    // 2. Не получилось — переключаем панель на директорию файла
     const newPath = dir ? '/' + dir : '/';
-    if (side === 'left') {
-        FAR.leftPath = newPath;
-        FAR.leftSelectedIdx.clear();
-        FAR.leftAnchor = -1;
-        FAR.leftCursor = -1;
-    } else {
-        FAR.rightPath = newPath;
-        FAR.rightSelectedIdx.clear();
-        FAR.rightAnchor = -1;
-        FAR.rightCursor = -1;
-    }
+    ctx.path = newPath;
+    ctx.selectedIdx.clear();
+    ctx.anchor = -1;
+    ctx.cursor = -1;
+
     FAR.renderPanel(side);
 
-    const files = side === 'left' ? FAR.leftFiles : FAR.rightFiles;
+    // 3. После перерисовки пробуем выделить снова
+    const files = ctx.files || [];
     const idx = files.findIndex(function(f) {
         return FAR.normPath(f.path) === targetPath;
     });
     if (idx >= 0) {
-        if (side === 'left') {
-            FAR.leftSelectedIdx.clear();
-            FAR.leftSelectedIdx.add(idx);
-            FAR.leftCursor = idx;
-            FAR.leftAnchor = idx;
-        } else {
-            FAR.rightSelectedIdx.clear();
-            FAR.rightSelectedIdx.add(idx);
-            FAR.rightCursor = idx;
-            FAR.rightAnchor = idx;
-        }
+        ctx.selectedIdx.clear();
+        ctx.selectedIdx.add(idx);
+        ctx.cursor = idx;
+        ctx.anchor = idx;
         FAR.renderPanel(side);
         if (typeof FAR.scrollCursorIntoView === 'function') {
             FAR.scrollCursorIntoView(side);
         }
+        FAR.saveUiState();
     }
 };

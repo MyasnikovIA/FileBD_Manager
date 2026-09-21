@@ -124,6 +124,9 @@ FAR._viewerCloseAll = function () {
  * Логика сквозная: неважно, каким просмотрщиком открыт текущий файл.
  * Если следующий файл — картинка, откроется обычный просмотрщик;
  * если панорама — панорамный, и т.д. Выбор делает openFile().
+ *
+ * После открытия синхронизирует выделение и курсор в панели side,
+ * чтобы фон «следовал» за просмотрщиком.
  */
 FAR.viewerNavigate = async function (dir) {
     const side  = FAR._viewerSide;
@@ -155,6 +158,13 @@ FAR.viewerNavigate = async function (dir) {
     // openFile сам решит, какой просмотрщик использовать
     try {
         await FAR.openFile(item, side, targetIdx);
+
+        // Синхронизируем выделение и курсор в панели-источнике.
+        // Вызываем после openFile — на случай, если openFile
+        // внутри себя что-то перерисовал в панели.
+        if (typeof FAR._selectFileInPanel === 'function') {
+            FAR._selectFileInPanel(item, side);
+        }
     } catch (e) {
         console.error('viewerNavigate:', e);
         // Откат к прежней позиции при ошибке

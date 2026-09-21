@@ -21,16 +21,7 @@
   <component name="ChangeListManager">
     <list default="true" id="58b0bec6-76ed-43a5-8023-6ef531bb6bea" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/css/modal.css" beforeDir="false" afterPath="$PROJECT_DIR$/css/modal.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/08-panels.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/08-panels.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/11-viewer.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/11-viewer.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/34-context-menu.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/34-context-menu.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/modals/emulator-viewer.html" beforeDir="false" afterPath="$PROJECT_DIR$/modals/emulator-viewer.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/modals/jsdos-viewer.html" beforeDir="false" afterPath="$PROJECT_DIR$/modals/jsdos-viewer.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/modals/nes-viewer.html" beforeDir="false" afterPath="$PROJECT_DIR$/modals/nes-viewer.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/modals/panorama-viewer.html" beforeDir="false" afterPath="$PROJECT_DIR$/modals/panorama-viewer.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/modals/pdf-viewer.html" beforeDir="false" afterPath="$PROJECT_DIR$/modals/pdf-viewer.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/modals/viewer.html" beforeDir="false" afterPath="$PROJECT_DIR$/modals/viewer.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/js/24-panorama-viewer.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/24-panorama-viewer.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -95,12 +86,12 @@
     <state x="1725" y="239" width="555" height="534" key="find.popup/0.0.1280.984/1280.0.1280.984@1280.0.1280.984" timestamp="1789278980041" />
     <state x="667" y="253" width="585" height="534" key="find.popup/0.0.1920.1040/1920.0.1920.1040@0.0.1920.1040" timestamp="1789123011035" />
     <state x="2587" y="253" width="585" height="534" key="find.popup/0.0.1920.1040/1920.0.1920.1040@1920.0.1920.1040" timestamp="1789906791502" />
-    <state x="623" y="225" width="672" height="678" key="search.everywhere.popup" timestamp="1789962555151">
+    <state x="623" y="225" width="672" height="678" key="search.everywhere.popup" timestamp="1789963318857">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
     <state x="415" y="213" width="672" height="642" key="search.everywhere.popup/0.0.1280.984/1280.0.1280.984@0.0.1280.984" timestamp="1789212379449" />
     <state x="1695" y="213" width="672" height="642" key="search.everywhere.popup/0.0.1280.984/1280.0.1280.984@1280.0.1280.984" timestamp="1789278855264" />
-    <state x="623" y="225" width="672" height="678" key="search.everywhere.popup/0.0.1920.1040/1920.0.1920.1040@0.0.1920.1040" timestamp="1789962555151" />
+    <state x="623" y="225" width="672" height="678" key="search.everywhere.popup/0.0.1920.1040/1920.0.1920.1040@0.0.1920.1040" timestamp="1789963318857" />
     <state x="2543" y="225" width="672" height="678" key="search.everywhere.popup/0.0.1920.1040/1920.0.1920.1040@1920.0.1920.1040" timestamp="1789907203562" />
   </component>
 </project>
