@@ -19,7 +19,9 @@ FAR.isJsdos = function(item) {
 /**
  * Открывает JSDOS-игру в полноэкранной модалке.
  */
-FAR.openJsdosViewer = async function(item) {
+FAR.openJsdosViewer = async function(item, side) {
+    side = side || FAR.activePanel;
+
     if (!FAR.ensureDb()) return;
     if (typeof FAR._ensureItemName === 'function') {
         FAR._ensureItemName(item);
@@ -36,6 +38,7 @@ FAR.openJsdosViewer = async function(item) {
     try { FAR.closePanoramaViewer(); } catch (e) {}
 
     FAR._jsdosCurrentItem = item;
+    FAR._jsdosCurrentSide = side;
     FAR._jsdosBlobUrls.forEach(function(u) { try { URL.revokeObjectURL(u); } catch (e) {} });
     FAR._jsdosBlobUrls = [];
 
@@ -61,10 +64,10 @@ FAR.openJsdosViewer = async function(item) {
     // Очищаем контейнер
     root.innerHTML = '';
 
-    // Загружаем файл из PouchDB
+    // Загружаем файл из PouchDB конкретной панели
     let url = null;
     try {
-        const { data, contentType } = await FAR.readFileBody(item);
+        const { data, contentType } = await FAR.readFileBodyFromSide(side, item);
         const blob = new Blob([data], { type: contentType || 'application/octet-stream' });
         url = URL.createObjectURL(blob);
         FAR._jsdosBlobUrls.push(url);
@@ -72,7 +75,7 @@ FAR.openJsdosViewer = async function(item) {
 
         info.textContent = `📦 ${FAR.formatSize(data.length)}`;
     } catch (e) {
-        console.error('openJsdosViewer: readFileBody failed:', e);
+        console.error('openJsdosViewer: readFileBodyFromSide failed:', e);
         loading.classList.add('hidden');
         FAR.toast('Не удалось загрузить игру: ' + e.message, 'error');
         return;
@@ -145,11 +148,11 @@ FAR.closeJsdosViewer = function() {
     const root = document.getElementById('jsdosRoot');
     if (root) root.innerHTML = '';
 
-    // Возвращаем фокус в файловый менеджер, чтобы стрелки и Enter
-    // снова обрабатывались панелями FAR
+    // Возвращаем фокус в файловый менеджер
     FAR._jsdosBlur(root);
 
     FAR._jsdosCurrentItem = null;
+    FAR._jsdosCurrentSide = null;
 };
 
 FAR.closeJsdosViewerOutside = function(e) {
@@ -164,8 +167,9 @@ FAR.downloadCurrentJsdos = async function() {
         FAR.toast('Нет активной игры', 'warning');
         return;
     }
+    const side = FAR._jsdosCurrentSide || FAR.activePanel;
     try {
-        const { data, contentType } = await FAR.readFileBody(FAR._jsdosCurrentItem);
+        const { data, contentType } = await FAR.readFileBodyFromSide(side, FAR._jsdosCurrentItem);
         const blob = new Blob([data], { type: contentType || 'application/octet-stream' });
         FAR.saveBlobAs(blob, FAR.sanitizeFileName(FAR._jsdosCurrentItem.name));
         FAR.toast('Файл сохранён', 'success');

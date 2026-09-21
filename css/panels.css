@@ -37,10 +37,14 @@
 }
 .panel.active .panel-header { background: #4a5068; }
 .panel-header .path {
-    color: #a6e3a1; font-family: monospace; font-size: 12px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    flex: 1; margin-right: 10px;
+    cursor: pointer;
+    transition: color 0.15s;
 }
+.panel-header .path:hover {
+    color: #89b4fa;
+    text-decoration: underline dotted;
+}
+
 .panel-header .nav-buttons { display: flex; gap: 4px; }
 .panel-header .nav-buttons button {
     background: #585b70; border: none; color: #cdd6f4;
@@ -88,3 +92,20 @@
 .file-item .meta {
     color: #a6adc8; font-size: 0.8em; margin-left: 10px; flex-shrink: 0;
 }
+
+
+.path { cursor: pointer; }
+.path:hover { text-decoration: underline dotted; }
+
+.db-badge {
+    display: inline-block;
+    margin-right: 6px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: #313244;
+    color: #a6e3a1;
+    font-size: 11px;
+    cursor: pointer;
+    user-select: none;
+}
+.db-badge:hover { background: #45475a; }

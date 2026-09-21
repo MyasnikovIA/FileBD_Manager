@@ -523,6 +523,8 @@ FAR.peApplyHotspotsToScene = async function() {
 };
 
 FAR._panoReloadWithHotspots = async function(item, hotspots) {
+    const side = FAR._panoCurrentSide || FAR.activePanel;
+
     const loading = document.getElementById('panoramaLoading');
     const loadingText = document.getElementById('panoramaLoadingText');
     loading.classList.remove('hidden');
@@ -544,7 +546,7 @@ FAR._panoReloadWithHotspots = async function(item, hotspots) {
         }
         document.getElementById('panoramaCanvas').innerHTML = '';
 
-        const { data, contentType } = await FAR.readFileBody(item);
+        const { data, contentType } = await FAR.readFileBodyFromSide(side, item);
         const blob = new Blob([data], { type: contentType || 'image/jpeg' });
         const url = URL.createObjectURL(blob);
         FAR._panoBlobUrls.push(url);
@@ -584,7 +586,7 @@ FAR._panoReloadWithHotspots = async function(item, hotspots) {
             hotSpots: pannellumHotspots,
             onClickHotSpot: function(hs) {
                 FAR._onPanoramaHotspotClick(hs);
-                return true;   // ← ВАЖНО: true
+                return true;
             }
         };
 

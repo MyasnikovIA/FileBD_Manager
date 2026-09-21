@@ -1,11 +1,14 @@
 <div id="connModal" class="modal-overlay hidden">
     <div class="modal-content" onclick="event.stopPropagation()">
         <div class="modal-header">
-            <h3>🔐 Подключение к FileBD</h3>
+            <h3 id="connTitle">🔐 Подключение к FileBD</h3>
             <button class="close-btn" id="connCloseBtn" onclick="FAR.closeConnModal()" style="display:none;">✕</button>
         </div>
         <div class="modal-body">
             <div class="conn-form">
+                <div class="conn-target" id="connTarget" style="display:none;">
+                    Подключение только для панели: <b id="connTargetName">—</b>
+                </div>
                 <div class="conn-field">
                     <label for="connUrl">Адрес БД (с портом)</label>
                     <input type="text" id="connUrl" placeholder="http://192.168.15.20:5984" autocomplete="off">

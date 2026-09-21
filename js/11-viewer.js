@@ -1,10 +1,35 @@
-FAR.openFile = async function(item) {
-    if (!FAR.ensureDb()) return;
+// ============================================================
+// Универсальный просмотрщик файлов
+// ============================================================
+// Поддерживает:
+//   • JSDOS-игры (.jsdos)
+//   • NES-ROM (.nes) через JSNES
+//   • EmulatorJS (snes, n64, gba, psx, sega и т.д.)
+//   • PDF (PDFObject)
+//   • Панорамы 360° (Pannellum)
+//   • Изображения (jpg/png/gif/webp/svg/bmp/ico)
+//   • Текст (txt/md/json/xml/csv/log/...)
+//   • Бинарные (hex-превью)
+//
+// В мульти-БД режиме вторым аргументом приходит side ('left'/'right'),
+// чтобы читать тело файла из БД ИМЕННО этой панели, а не активной.
+// ============================================================
+
+FAR.openFile = async function(item, side) {
+    side = side || FAR.activePanel;
+
+    // Проверяем, что у этой панели есть БД
+    const ctx = FAR.side[side];
+    if (!ctx || !ctx.db) {
+        FAR.toast('Панель не подключена к БД', 'warning');
+        FAR.openConnModal(false, side);
+        return;
+    }
 
     // ===== ПРОВЕРКА 1: JSDOS-файл =====
     try {
         if (typeof FAR.isJsdos === 'function' && FAR.isJsdos(item)) {
-            await FAR.openJsdosViewer(item);
+            await FAR.openJsdosViewer(item, side);
             return;
         }
     } catch (e) {
@@ -14,7 +39,7 @@ FAR.openFile = async function(item) {
     // ===== ПРОВЕРКА 2: NES-файл =====
     try {
         if (typeof FAR.isNes === 'function' && FAR.isNes(item)) {
-            await FAR.openNesViewer(item);
+            await FAR.openNesViewer(item, side);
             return;
         }
     } catch (e) {
@@ -24,29 +49,28 @@ FAR.openFile = async function(item) {
     // ===== ПРОВЕРКА 3: EmulatorJS-файл =====
     try {
         if (typeof FAR.isEmulatorFile === 'function' && FAR.isEmulatorFile(item)) {
-            await FAR.openEmulatorViewer(item);
+            await FAR.openEmulatorViewer(item, side);
             return;
         }
     } catch (e) {
         console.warn('Ошибка проверки EmulatorJS:', e);
     }
 
-  // ===== ПРОВЕРКА 4: PDF =====
+    // ===== ПРОВЕРКА 4: PDF =====
     try {
         if (typeof FAR.isPdf === 'function' && FAR.isPdf(item)) {
-            await FAR.openPdfViewer(item);
+            await FAR.openPdfViewer(item, side);
             return;
         }
     } catch (e) {
         console.warn('Ошибка проверки PDF:', e);
     }
 
-    // Проверяем, является ли файл панорамой 360°
-    // (по соотношению сторон ~2:1)
+    // ===== ПРОВЕРКА 5: Панорама 360° =====
     try {
-        const isPano = await FAR.isPanorama(item);
+        const isPano = await FAR.isPanorama(item, side);
         if (isPano) {
-            await FAR.openPanoramaViewer(item);
+            await FAR.openPanoramaViewer(item, side);
             return;
         }
     } catch (e) {
@@ -65,7 +89,8 @@ FAR.openFile = async function(item) {
     info.textContent = '';
 
     try {
-        const { data, contentType } = await FAR.readFileBody(item);
+        const { data, contentType } = await FAR.readFileBodyFromSide(side, item);
+
         FAR.currentFileData = data;
         FAR.currentFileName = item.name;
         FAR.currentFileType = contentType;

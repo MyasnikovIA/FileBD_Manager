@@ -1,4 +1,13 @@
 // ============================================================
+// Точка входа: загрузка модалок, инициализация, автоподключение
+// ============================================================
+// Поддерживает мульти-БД (модуль 35-multi-db.js):
+//   • при старте подключает ОБЕ панели к одной БД;
+//   • при клике по шапке панели можно сменить БД только для неё;
+//   • данные подключения каждой панели хранятся отдельно.
+// ============================================================
+
+// ============================================================
 // Загрузка модальных окон из modals/*.html
 // ============================================================
 FAR.loadModalFragment = function(path) {
@@ -46,6 +55,16 @@ FAR.injectModals = function() {
 document.addEventListener('DOMContentLoaded', async function() {
     FAR.injectModals();
 
+    // --- Мульти-БД: переключатели БД в шапках панелей ---
+    // (модуль 35-multi-db.js уже загружен к этому моменту,
+    //  т.к. подключён в index.html до 23-main.js)
+    if (typeof FAR.setupPanelDbSwitcher === 'function') {
+        FAR.setupPanelDbSwitcher();
+    }
+    if (typeof FAR.updateConnIndicators === 'function') {
+        FAR.updateConnIndicators();
+    }
+
     FAR.updateAuthUI();
     FAR.renderPanel('left');
     FAR.renderPanel('right');
@@ -63,27 +82,57 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Устанавливаем обёртку Pannellum для загрузки из PouchDB
     FAR._installPannellumDbWrapper();
 
-    const saved = FAR.loadConnFromLS();
+    // ============================================================
+    // Автоподключение
+    // ============================================================
+    // Приоритет источников для «обеих панелей»:
+    //   1) глобальный LS (filebd_conn) — как было раньше;
+    //   2) LS левой панели (filebd_conn_left);
+    //   3) LS правой панели (filebd_conn_right).
+    // Если ничего нет — открываем модалку обязательного подключения.
+    // ============================================================
+
+    const savedGlobal = FAR.loadConnFromLS();
+    const savedLeft   = (typeof FAR.loadSideConnFromLS === 'function')
+                        ? FAR.loadSideConnFromLS('left')  : null;
+    const savedRight  = (typeof FAR.loadSideConnFromLS === 'function')
+                        ? FAR.loadSideConnFromLS('right') : null;
+
+    const saved = savedGlobal || savedLeft || savedRight;
+
     if (saved) {
         FAR.setStatus('🔌 Подключение с сохранёнными данными…');
         FAR.showLoading('Подключение к FileBD…', saved.url + '/' + saved.db);
         try {
             const res = await FAR.connectToDb(saved);
-            FAR.db = res.db;
-            FAR.currentConn = saved;
+
+            // Ставим подключение ОБЕИМ панелям
+            FAR.applyConnectionToBoth(saved, res.db, res.fullUrl);
+
             FAR.hideLoading();
             FAR.updateAuthUI();
             FAR.setStatus(`✅ Подключено: ${res.fullUrl} (документов: ${res.info.doc_count || 0})`);
             FAR.toast('Подключение восстановлено', 'success');
-            await FAR.loadFiles();
+
+            await FAR.loadFilesForSide('left');
+            await FAR.loadFilesForSide('right');
+
             FAR.renderPanel('left');
             FAR.renderPanel('right');
+
             FAR.restoreUiState();
+
+            if (typeof FAR.updateConnIndicators === 'function') {
+                FAR.updateConnIndicators();
+            }
         } catch (e) {
             FAR.hideLoading();
             console.error('auto-connect error:', e);
-            FAR.db = null;
+
+            FAR.side.left  = FAR.createSideContext('left');
+            FAR.side.right = FAR.createSideContext('right');
             FAR.currentConn = null;
+
             FAR.updateAuthUI();
             FAR.setStatus('❌ Ошибка автоподключения: ' + e.message);
             FAR.toast('Не удалось подключиться с сохранёнными данными', 'error');
@@ -94,4 +143,3 @@ document.addEventListener('DOMContentLoaded', async function() {
         FAR.openConnModal(true);
     }
 });
-

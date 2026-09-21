@@ -15,7 +15,9 @@ FAR.PANO_ASPECT_MAX = 2.1;
  * Проверяет, является ли файл панорамой 360°.
  * Критерий: соотношение сторон ≈ 2:1 (например, 7744×3872).
  */
-FAR.isPanorama = async function(item) {
+FAR.isPanorama = async function(item, side) {
+    side = side || FAR.activePanel;
+
     if (!item || item.isFolder) return false;
 
     if (typeof FAR._ensureItemName === 'function') {
@@ -32,7 +34,7 @@ FAR.isPanorama = async function(item) {
     }
 
     try {
-        const { data } = await FAR.readFileBody(item);
+        const { data } = await FAR.readFileBodyFromSide(side, item);
         const blob = new Blob([data], { type: item.contentType || 'image/jpeg' });
         const url = URL.createObjectURL(blob);
 
@@ -62,7 +64,9 @@ FAR._measureImage = function(url) {
 /**
  * Ищет JSON с хотспотами для панорамы.
  */
-FAR._findPanoramaJson = async function(item) {
+FAR._findPanoramaJson = async function(item, side) {
+    side = side || FAR._panoCurrentSide || FAR.activePanel;
+
     if (!item) return null;
     if (typeof FAR._ensureItemName === 'function') {
         FAR._ensureItemName(item);
@@ -80,7 +84,7 @@ FAR._findPanoramaJson = async function(item) {
 
     if (jsonItem) {
         try {
-            const { data } = await FAR.readFileBody(jsonItem);
+            const { data } = await FAR.readFileBodyFromSide(side, jsonItem);
             const text = new TextDecoder('utf-8').decode(data);
             return JSON.parse(text);
         } catch (e) {
@@ -140,7 +144,9 @@ FAR._jsonToPannellumHotspots = function(jsonData, basePath, fallbackImageUrl) {
 /**
  * Открывает панораму в модалке.
  */
-FAR.openPanoramaViewer = async function(item) {
+FAR.openPanoramaViewer = async function(item, side) {
+    side = side || FAR.activePanel;
+
     if (!FAR.ensureDb()) return;
     if (typeof FAR._ensureItemName === 'function') {
         FAR._ensureItemName(item);
@@ -149,6 +155,7 @@ FAR.openPanoramaViewer = async function(item) {
     FAR.closeViewer();
 
     FAR._panoCurrentItem = item;
+    FAR._panoCurrentSide = side;
     FAR._panoBlobUrls.forEach(function(u) { try { URL.revokeObjectURL(u); } catch (e) {} });
     FAR._panoBlobUrls = [];
     FAR._panoCurrentHotspots = [];
@@ -173,7 +180,7 @@ FAR.openPanoramaViewer = async function(item) {
     document.getElementById('panoramaCanvas').innerHTML = '';
 
     try {
-        const { data, contentType } = await FAR.readFileBody(item);
+        const { data, contentType } = await FAR.readFileBodyFromSide(side, item);
         const blob = new Blob([data], { type: contentType || 'image/jpeg' });
         const url = URL.createObjectURL(blob);
         FAR._panoBlobUrls.push(url);
@@ -189,7 +196,7 @@ FAR.openPanoramaViewer = async function(item) {
         const basePath = item.path.includes('/')
             ? item.path.substring(0, item.path.lastIndexOf('/'))
             : '';
-        const jsonData = await FAR._findPanoramaJson(item);
+        const jsonData = await FAR._findPanoramaJson(item, side);
         const hotspots = FAR._jsonToPannellumHotspots(jsonData, basePath, url);
 
         FAR._panoCurrentHotspots = jsonData && Array.isArray(jsonData.hotSpots)
@@ -232,7 +239,6 @@ FAR.openPanoramaViewer = async function(item) {
         FAR._panoViewer.on('load', function() {
             loading.classList.add('hidden');
             FAR.setStatus('🌐 Панорама загружена: ' + item.name);
-            FAR._panoUpdateFooter();
             setTimeout(function() {
                 FAR._panoAttachHotspotInterceptors();
                 FAR._panoAttachDblClickHandler();
@@ -257,6 +263,8 @@ FAR.openPanoramaViewer = async function(item) {
 FAR._onPanoramaHotspotClick = async function(hs) {
     if (!hs) return;
 
+    const side = FAR._panoCurrentSide || FAR.activePanel;
+
     const loading = document.getElementById('panoramaLoading');
     const loadingText = document.getElementById('panoramaLoadingText');
     loading.classList.remove('hidden');
@@ -275,13 +283,13 @@ FAR._onPanoramaHotspotClick = async function(hs) {
             FAR._panoCurrentItem = item;
             FAR._panoCurrentHotspots = [];
 
-            const { data, contentType } = await FAR.readFileBody(item);
+            const { data, contentType } = await FAR.readFileBodyFromSide(side, item);
             const blob = new Blob([data], { type: contentType || 'image/jpeg' });
             const url = URL.createObjectURL(blob);
             FAR._panoBlobUrls.push(url);
             FAR._panoCurrentUrl = url;
 
-            const jsonData = await FAR._findPanoramaJson(item);
+            const jsonData = await FAR._findPanoramaJson(item, side);
             const hotspots = FAR._jsonToPannellumHotspots(jsonData, '', url);
             FAR._panoCurrentHotspots = jsonData && Array.isArray(jsonData.hotSpots)
                 ? jsonData.hotSpots.slice()
@@ -386,13 +394,13 @@ FAR._onPanoramaHotspotClick = async function(hs) {
         FAR._panoCurrentItem = targetItem;
         FAR._panoCurrentHotspots = [];
 
-        const { data, contentType } = await FAR.readFileBody(targetItem);
+        const { data, contentType } = await FAR.readFileBodyFromSide(side, targetItem);
         const blob = new Blob([data], { type: contentType || 'image/jpeg' });
         const url = URL.createObjectURL(blob);
         FAR._panoBlobUrls.push(url);
         FAR._panoCurrentUrl = url;
 
-        const jsonData = await FAR._findPanoramaJson(targetItem);
+        const jsonData = await FAR._findPanoramaJson(targetItem, side);
         const hotspots = FAR._jsonToPannellumHotspots(jsonData, '', url);
         FAR._panoCurrentHotspots = jsonData && Array.isArray(jsonData.hotSpots)
             ? jsonData.hotSpots.slice()
@@ -458,6 +466,7 @@ FAR._onPanoramaHotspotClick = async function(hs) {
     }
 };
 
+
 FAR.closePanoramaViewer = function() {
     const modal = document.getElementById('panoramaViewerModal');
     if (modal) modal.classList.add('hidden');
@@ -482,19 +491,20 @@ FAR.closePanoramaViewer = function() {
     FAR._panoCurrentItem = null;
     FAR._panoCurrentUrl = null;
     FAR._panoCurrentHotspots = [];
+    FAR._panoCurrentSide = null;
 };
 
 FAR.closePanoramaViewerOutside = function(e) {
     if (e.target === e.currentTarget) FAR.closePanoramaViewer();
 };
-
 FAR.downloadCurrentPanorama = async function() {
     if (!FAR._panoCurrentItem) {
         FAR.toast('Нет активной панорамы', 'warning');
         return;
     }
+    const side = FAR._panoCurrentSide || FAR.activePanel;
     try {
-        const { data, contentType } = await FAR.readFileBody(FAR._panoCurrentItem);
+        const { data, contentType } = await FAR.readFileBodyFromSide(side, FAR._panoCurrentItem);
         const blob = new Blob([data], { type: contentType || 'image/jpeg' });
         FAR.saveBlobAs(blob, FAR.sanitizeFileName(FAR._panoCurrentItem.name));
         FAR.toast('Панорама сохранена', 'success');

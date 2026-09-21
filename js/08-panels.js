@@ -1,43 +1,62 @@
+// ============================================================
+// Рендер панелей, выделение, навигация курсором
+// ============================================================
+// В мульти-БД режиме каждая панель читает свой контекст
+// из FAR.side[side] (модуль 35-multi-db.js). Старые имена
+// FAR.leftPath / FAR.leftFiles / ... работают как алиасы
+// к этим контекстам — их можно использовать без изменений.
+// ============================================================
+
 FAR.renderPanel = function(side) {
-    const path = side === 'left' ? FAR.leftPath : FAR.rightPath;
+    const ctx = FAR.side[side];
+    if (!ctx) return;
+
     const listEl   = document.getElementById(side === 'left' ? 'listLeft'   : 'listRight');
     const pathEl   = document.getElementById(side === 'left' ? 'pathLeft'   : 'pathRight');
     const statusEl = document.getElementById(side === 'left' ? 'statusLeft' : 'statusRight');
 
-    const safePath = '/' + FAR.normPath(path);
-    if (side === 'left') FAR.leftPath = safePath;
-    else FAR.rightPath = safePath;
+    const safePath = '/' + FAR.normPath(ctx.path);
+    ctx.path = safePath;
     pathEl.textContent = safePath;
 
-    const items = FAR.listFilesInPath(safePath);
-    if (side === 'left') FAR.leftFiles = items;
-    else FAR.rightFiles = items;
+    // Подсказка с текущей БД (какая база у этой панели)
+    const dbLabel = ctx.conn
+        ? (ctx.conn.db + '@' + (ctx.conn.url || '').replace(/^https?:\/\//, ''))
+        : '— нет подключения —';
+    pathEl.title = 'БД: ' + dbLabel + '\nКлик — сменить БД для этой панели';
+
+    // Индекс файлов этой панели
+    const items = FAR.listFilesInPathForSide(side, safePath);
+    ctx.files = items;
 
     // Есть ли виртуальный элемент ".." (индекс -1)
     const hasParent = (safePath !== '/');
-    // Допустимый диапазон индексов курсора: [-1 .. items.length-1] если hasParent,
-    // иначе [0 .. items.length-1]
     const minCursor = hasParent ? -1 : 0;
     const maxCursor = items.length - 1;
 
     // --- Корректировка курсора под текущий список ---
-    let cursor = side === 'left' ? FAR.leftCursor : FAR.rightCursor;
+    let cursor = ctx.cursor;
     if (items.length === 0) {
-        // Пустая папка: курсор может стоять только на ".." (если есть) или быть -1
-        cursor = hasParent ? -1 : -1;
+        cursor = -1;
     } else if (cursor < minCursor) {
         cursor = minCursor;
     } else if (cursor > maxCursor) {
         cursor = maxCursor;
-    } else if (cursor === 0 && !hasParent && items.length === 0) {
-        cursor = -1;
     }
-    if (side === 'left') FAR.leftCursor = cursor;
-    else FAR.rightCursor = cursor;
+    ctx.cursor = cursor;
 
-    const selSet = side === 'left' ? FAR.leftSelectedIdx : FAR.rightSelectedIdx;
-    for (const idx of Array.from(selSet)) if (idx >= items.length) selSet.delete(idx);
+    const selSet = ctx.selectedIdx;
+    for (const idx of Array.from(selSet)) {
+        if (idx < 0 || idx >= items.length) selSet.delete(idx);
+    }
 
+    // === Стилизация активной панели ===
+    const panelEl = document.getElementById(side === 'left' ? 'panelLeft' : 'panelRight');
+    if (panelEl) {
+        panelEl.classList.toggle('active', side === FAR.activePanel);
+    }
+
+    // === Рендер ===
     let html = '';
     if (hasParent) {
         const isFocused = (side === FAR.activePanel) && (cursor === -1);
@@ -89,29 +108,25 @@ FAR.setActivePanel = function(side) {
 };
 
 FAR.goToParent = function(side) {
-    const currentPath = side === 'left' ? FAR.leftPath : FAR.rightPath;
-    const cur = FAR.normPath(currentPath);
+    const ctx = FAR.side[side];
+    if (!ctx) return;
+    const cur = FAR.normPath(ctx.path);
     if (!cur) return;
     const parts = cur.split('/').filter(Boolean);
     parts.pop();
     const newPath = parts.length ? '/' + parts.join('/') : '/';
-    if (side === 'left') {
-        FAR.leftPath = newPath;
-        FAR.leftSelectedIdx.clear();
-        FAR.leftAnchor = -1;
-        FAR.leftCursor = -1;
-    } else {
-        FAR.rightPath = newPath;
-        FAR.rightSelectedIdx.clear();
-        FAR.rightAnchor = -1;
-        FAR.rightCursor = -1;
-    }
+    ctx.path = newPath;
+    ctx.selectedIdx.clear();
+    ctx.anchor = -1;
+    ctx.cursor = -1;
     FAR.renderPanel(side);
     FAR.saveUiState();
 };
 
 FAR.navigatePanel = function(side, action) {
-    let path = side === 'left' ? FAR.leftPath : FAR.rightPath;
+    const ctx = FAR.side[side];
+    if (!ctx) return;
+    let path = ctx.path;
     if (action === '..') {
         const cur = FAR.normPath(path);
         if (!cur) return;
@@ -121,17 +136,10 @@ FAR.navigatePanel = function(side, action) {
     } else if (action === '/') {
         path = '/';
     }
-    if (side === 'left') {
-        FAR.leftPath = path;
-        FAR.leftSelectedIdx.clear();
-        FAR.leftAnchor = -1;
-        FAR.leftCursor = -1;
-    } else {
-        FAR.rightPath = path;
-        FAR.rightSelectedIdx.clear();
-        FAR.rightAnchor = -1;
-        FAR.rightCursor = -1;
-    }
+    ctx.path = path;
+    ctx.selectedIdx.clear();
+    ctx.anchor = -1;
+    ctx.cursor = -1;
     FAR.renderPanel(side);
     FAR.saveUiState();
 };
@@ -140,32 +148,32 @@ FAR.handleItemClick = function(event, side, index) {
     event.stopPropagation();
     FAR.setActivePanel(side);
 
+    const ctx = FAR.side[side];
+    if (!ctx) return;
+
     // Клик по ".." — не выделяем, но ставим курсор
     if (index === -1) {
-        if (side === 'left') FAR.leftCursor = -1;
-        else FAR.rightCursor = -1;
-        if (side === 'left') { FAR.leftSelectedIdx.clear(); FAR.leftAnchor = -1; }
-        else { FAR.rightSelectedIdx.clear(); FAR.rightAnchor = -1; }
+        ctx.cursor = -1;
+        ctx.selectedIdx.clear();
+        ctx.anchor = -1;
         FAR.renderPanel(side);
         FAR.saveUiState();
         return;
     }
 
-    const selSet = side === 'left' ? FAR.leftSelectedIdx : FAR.rightSelectedIdx;
-    const anchor = side === 'left' ? FAR.leftAnchor : FAR.rightAnchor;
+    const selSet = ctx.selectedIdx;
+    const anchor = ctx.anchor;
     const ctrl   = event.ctrlKey || event.metaKey;
     const shift  = event.shiftKey;
 
     if (!shift) {
-        if (side === 'left') FAR.leftCursor = index;
-        else FAR.rightCursor = index;
+        ctx.cursor = index;
     }
 
     if (ctrl) {
         if (selSet.has(index)) selSet.delete(index);
         else selSet.add(index);
-        if (side === 'left') FAR.leftAnchor = index;
-        else FAR.rightAnchor = index;
+        ctx.anchor = index;
     } else if (shift && anchor !== -1) {
         selSet.clear();
         const from = Math.min(anchor, index);
@@ -174,8 +182,7 @@ FAR.handleItemClick = function(event, side, index) {
     } else {
         selSet.clear();
         selSet.add(index);
-        if (side === 'left') FAR.leftAnchor = index;
-        else FAR.rightAnchor = index;
+        ctx.anchor = index;
     }
     FAR.renderPanel(side);
     FAR.saveUiState();
@@ -187,43 +194,42 @@ FAR.handleItemDblClick = async function(side, index) {
         FAR.goToParent(side);
         return;
     }
-    const items = side === 'left' ? FAR.leftFiles : FAR.rightFiles;
+    const ctx = FAR.side[side];
+    if (!ctx) return;
+    const items = ctx.files;
     if (index < 0 || index >= items.length) return;
     const item = items[index];
 
     if (item.isFolder) {
         const newPath = '/' + FAR.normPath(item.path);
-        if (side === 'left') {
-            FAR.leftPath = newPath;
-            FAR.leftSelectedIdx.clear();
-            FAR.leftAnchor = -1;
-            FAR.leftCursor = -1;
-        } else {
-            FAR.rightPath = newPath;
-            FAR.rightSelectedIdx.clear();
-            FAR.rightAnchor = -1;
-            FAR.rightCursor = -1;
-        }
+        ctx.path = newPath;
+        ctx.selectedIdx.clear();
+        ctx.anchor = -1;
+        ctx.cursor = -1;
         FAR.renderPanel(side);
         FAR.saveUiState();
     } else {
-        await FAR.openFile(item);
+        await FAR.openFile(item, side);
     }
 };
 
 FAR.updateSelectionInfo = function() {
     const el = document.getElementById('selInfo');
-    const total = FAR.leftSelectedIdx.size + FAR.rightSelectedIdx.size;
+    const leftSel  = FAR.side.left  ? FAR.side.left.selectedIdx.size  : 0;
+    const rightSel = FAR.side.right ? FAR.side.right.selectedIdx.size : 0;
+    const total = leftSel + rightSel;
     if (total === 0) { el.textContent = ''; return; }
     const parts = [];
-    if (FAR.leftSelectedIdx.size > 0) parts.push(`Л: ${FAR.leftSelectedIdx.size}`);
-    if (FAR.rightSelectedIdx.size > 0) parts.push(`П: ${FAR.rightSelectedIdx.size}`);
+    if (leftSel > 0)  parts.push(`Л: ${leftSel}`);
+    if (rightSel > 0) parts.push(`П: ${rightSel}`);
     el.textContent = `Выделено — ${parts.join(', ')}`;
 };
 
 FAR.getSelectedItemsFromActivePanel = function() {
-    const items = FAR.activePanel === 'left' ? FAR.leftFiles : FAR.rightFiles;
-    const selSet = FAR.activePanel === 'left' ? FAR.leftSelectedIdx : FAR.rightSelectedIdx;
+    const ctx = FAR.side[FAR.activePanel];
+    if (!ctx) return [];
+    const items = ctx.files;
+    const selSet = ctx.selectedIdx;
     const result = [];
     for (const i of Array.from(selSet).sort((a, b) => a - b)) {
         if (i >= 0 && i < items.length) result.push({ item: items[i], index: i });
@@ -232,8 +238,9 @@ FAR.getSelectedItemsFromActivePanel = function() {
 };
 
 FAR.updateButtons = function() {
-    const hasDb = !!FAR.db;
-    const selCount = FAR.activePanel === 'left' ? FAR.leftSelectedIdx.size : FAR.rightSelectedIdx.size;
+    const hasDb = !!FAR.db;   // алиас: БД активной панели
+    const ctx = FAR.side[FAR.activePanel];
+    const selCount = ctx ? ctx.selectedIdx.size : 0;
     document.getElementById('btnCopy').disabled     = !hasDb || selCount === 0;
     document.getElementById('btnMove').disabled     = !hasDb || selCount === 0;
     document.getElementById('btnDelete').disabled   = !hasDb || selCount === 0;
@@ -257,7 +264,9 @@ FAR.getPageSize = function(side) {
 FAR.scrollCursorIntoView = function(side) {
     const listEl = document.getElementById(side === 'left' ? 'listLeft' : 'listRight');
     if (!listEl) return;
-    const cursor = side === 'left' ? FAR.leftCursor : FAR.rightCursor;
+    const ctx = FAR.side[side];
+    if (!ctx) return;
+    const cursor = ctx.cursor;
     if (cursor < -1) return;
     const el = listEl.querySelector(`.file-item[data-index="${cursor}"]`);
     if (el && el.scrollIntoView) {
@@ -268,21 +277,22 @@ FAR.scrollCursorIntoView = function(side) {
 FAR.moveCursor = function(side, delta, options) {
     options = options || {};
     const isPage = !!options.page;
-    const toEdge = options.toEdge; // 'home' | 'end' | undefined
+    const toEdge = options.toEdge;
 
-    const path = side === 'left' ? FAR.leftPath : FAR.rightPath;
-    const hasParent = (FAR.normPath(path) !== '');
-    const items = side === 'left' ? FAR.leftFiles : FAR.rightFiles;
+    const ctx = FAR.side[side];
+    if (!ctx) return;
 
-    // Диапазон курсора: от -1 (если есть "..") до items.length - 1
+    const hasParent = (FAR.normPath(ctx.path) !== '');
+    const items = ctx.files;
+
     const minCursor = hasParent ? -1 : 0;
     const maxCursor = items.length - 1;
 
-    if (maxCursor < minCursor) return; // пусто и нет ".."
+    if (maxCursor < minCursor) return;
 
-    const selSet = side === 'left' ? FAR.leftSelectedIdx : FAR.rightSelectedIdx;
-    const anchor = side === 'left' ? FAR.leftAnchor : FAR.rightAnchor;
-    let cursor = side === 'left' ? FAR.leftCursor : FAR.rightCursor;
+    const selSet = ctx.selectedIdx;
+    const anchor = ctx.anchor;
+    let cursor = ctx.cursor;
 
     if (cursor < minCursor) cursor = minCursor;
     if (cursor > maxCursor) cursor = maxCursor;
@@ -317,8 +327,7 @@ FAR.moveCursor = function(side, delta, options) {
         } else if (anchor === -1 || anchor === undefined) {
             selSet.clear();
             selSet.add(newCursor);
-            if (side === 'left') FAR.leftAnchor = newCursor;
-            else FAR.rightAnchor = newCursor;
+            ctx.anchor = newCursor;
         } else {
             selSet.clear();
             const from = Math.min(anchor, newCursor);
@@ -328,18 +337,15 @@ FAR.moveCursor = function(side, delta, options) {
     } else {
         if (newCursor === -1) {
             selSet.clear();
-            if (side === 'left') FAR.leftAnchor = -1;
-            else FAR.rightAnchor = -1;
+            ctx.anchor = -1;
         } else {
             selSet.clear();
             selSet.add(newCursor);
-            if (side === 'left') FAR.leftAnchor = newCursor;
-            else FAR.rightAnchor = newCursor;
+            ctx.anchor = newCursor;
         }
     }
 
-    if (side === 'left') FAR.leftCursor = newCursor;
-    else FAR.rightCursor = newCursor;
+    ctx.cursor = newCursor;
 
     FAR.renderPanel(side);
     FAR.scrollCursorIntoView(side);

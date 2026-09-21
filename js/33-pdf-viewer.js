@@ -26,7 +26,9 @@ FAR.isPdf = function(item) {
 /**
  * Открывает PDF в полноэкранной модалке.
  */
-FAR.openPdfViewer = async function(item) {
+FAR.openPdfViewer = async function(item, side) {
+    side = side || FAR.activePanel;
+
     if (!FAR.ensureDb()) return;
     if (typeof FAR._ensureItemName === 'function') {
         FAR._ensureItemName(item);
@@ -40,6 +42,7 @@ FAR.openPdfViewer = async function(item) {
     try { if (typeof FAR.closeEmulatorViewer === 'function') FAR.closeEmulatorViewer(); } catch (e) {}
 
     FAR._pdfCurrentItem = item;
+    FAR._pdfCurrentSide = side;
     FAR._pdfBlobUrls.forEach(function(u) { try { URL.revokeObjectURL(u); } catch (e) {} });
     FAR._pdfBlobUrls = [];
 
@@ -68,14 +71,14 @@ FAR.openPdfViewer = async function(item) {
         return;
     }
 
-    // === Загружаем файл из PouchDB ===
+    // === Загружаем файл из БД конкретной панели ===
     let blob = null;
     try {
-        const { data, contentType } = await FAR.readFileBody(item);
+        const { data, contentType } = await FAR.readFileBodyFromSide(side, item);
         blob = new Blob([data], { type: contentType || 'application/pdf' });
         info.textContent = `📄 ${FAR.formatSize(data.length)}`;
     } catch (e) {
-        console.error('openPdfViewer: readFileBody failed:', e);
+        console.error('openPdfViewer: readFileBodyFromSide failed:', e);
         loading.classList.add('hidden');
         FAR._pdfRenderFallback(root, item, 'Не удалось загрузить PDF: ' + e.message);
         FAR.toast('Ошибка загрузки PDF: ' + e.message, 'error');
@@ -94,7 +97,6 @@ FAR.openPdfViewer = async function(item) {
         if (PDFObject.supportsPDFs) {
             PDFObject.embed(blobUrl, '#pdfRoot', {
                 title: item.name || 'PDF',
-                // id, page, pdfOpenParams можно добавлять по мере надобности
                 omitInlineStyles: false
             });
             loading.classList.add('hidden');
@@ -157,6 +159,7 @@ FAR.closePdfViewer = function() {
 
     FAR._pdfCurrentBlobUrl = null;
     FAR._pdfCurrentItem = null;
+    FAR._pdfCurrentSide = null;
 };
 
 FAR.closePdfViewerOutside = function(e) {
@@ -171,8 +174,9 @@ FAR.downloadCurrentPdf = async function() {
         FAR.toast('Нет активного PDF', 'warning');
         return;
     }
+    const side = FAR._pdfCurrentSide || FAR.activePanel;
     try {
-        const { data, contentType } = await FAR.readFileBody(FAR._pdfCurrentItem);
+        const { data, contentType } = await FAR.readFileBodyFromSide(side, FAR._pdfCurrentItem);
         const blob = new Blob([data], { type: contentType || 'application/pdf' });
         const name = FAR._pdfCurrentItem.name ||
                      (FAR._pdfCurrentItem.path.split('/').pop()) || 'document.pdf';

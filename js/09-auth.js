@@ -21,24 +21,22 @@ FAR.updateAuthUI = function() {
     }
     if (FAR.db) FAR.updateButtons();
 };
-
-FAR.onAuthButton = function() {
+FAR.onAuthButton = function () {
     if (FAR.db) {
         if (!confirm('Выйти из системы?\nСохранённые данные подключения будут удалены.')) return;
         FAR.clearConnFromLS();
-        FAR.db = null;
+        try { localStorage.removeItem(FAR.LS_CONN_LEFT); } catch (e) {}
+        try { localStorage.removeItem(FAR.LS_CONN_RIGHT); } catch (e) {}
+
+        FAR.side.left  = FAR.createSideContext('left');
+        FAR.side.right = FAR.createSideContext('right');
         FAR.currentConn = null;
-        FAR.fileIndex = [];
-        FAR.leftPath = '/';
-        FAR.rightPath = '/';
-        FAR.leftSelectedIdx.clear();
-        FAR.rightSelectedIdx.clear();
-        FAR.leftAnchor = -1;
-        FAR.rightAnchor = -1;
+
         FAR.renderPanel('left');
         FAR.renderPanel('right');
         FAR.updateAuthUI();
         FAR.updateTotalSize();
+        FAR.updateConnIndicators();
         FAR.setStatus('🔓 Вы вышли из системы');
         FAR.openConnModal();
     } else {

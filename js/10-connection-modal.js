@@ -1,8 +1,13 @@
-FAR.openConnModal = function(required) {
+FAR.connModalSide = null;
+
+FAR.openConnModal = function (required, side) {
     FAR.connModalRequired = !!required;
+    FAR.connModalSide = side || null;
+
     const modal = document.getElementById('connModal');
-    const saved = FAR.loadConnFromLS();
-    const def = saved || FAR.getDefaultConn();
+
+    // Данные по умолчанию — из контекста стороны, LS стороны, глобального LS или дефолт
+    const def = FAR.getConnDefaultsForSide(FAR.connModalSide);
 
     document.getElementById('connUrl').value  = def.url  || '';
     document.getElementById('connDb').value   = def.db   || '';
@@ -13,8 +18,23 @@ FAR.openConnModal = function(required) {
     document.getElementById('connConnectBtn').textContent = 'Подключиться';
     document.getElementById('connCloseBtn').style.display  = required ? 'none' : '';
     document.getElementById('connCancelBtn').style.display = required ? 'none' : '';
+
+    // Заголовок и цель
+    const titleEl = document.getElementById('connTitle');
+    const tgtEl = document.getElementById('connTarget');
+    const tgtNameEl = document.getElementById('connTargetName');
+    if (FAR.connModalSide) {
+        if (titleEl) titleEl.textContent = '🔐 Подключение панели';
+        if (tgtEl) tgtEl.style.display = '';
+        if (tgtNameEl) tgtNameEl.textContent =
+            FAR.connModalSide === 'left' ? 'Левая' : 'Правая';
+    } else {
+        if (titleEl) titleEl.textContent = '🔐 Подключение к FileBD';
+        if (tgtEl) tgtEl.style.display = 'none';
+    }
+
     modal.classList.remove('hidden');
-    setTimeout(function() { document.getElementById('connUrl').focus(); }, 50);
+    setTimeout(function () { document.getElementById('connUrl').focus(); }, 50);
 };
 
 FAR.closeConnModal = function() {
@@ -22,7 +42,7 @@ FAR.closeConnModal = function() {
     document.getElementById('connModal').classList.add('hidden');
 };
 
-FAR.submitConnModal = async function() {
+FAR.submitConnModal = async function () {
     const url  = document.getElementById('connUrl').value.trim();
     const dbn  = document.getElementById('connDb').value.trim();
     const user = document.getElementById('connUser').value.trim();
@@ -34,24 +54,35 @@ FAR.submitConnModal = async function() {
     if (!url) { errEl.textContent = 'Укажите адрес БД'; return; }
     if (!dbn) { errEl.textContent = 'Укажите имя базы данных'; return; }
 
-    const cfg = { url, db: dbn, user, pass };
+    const cfg = { url: url, db: dbn, user: user, pass: pass };
     const btn = document.getElementById('connConnectBtn');
     btn.disabled = true;
     btn.textContent = 'Подключение…';
 
     try {
         const res = await FAR.connectToDb(cfg);
-        FAR.db = res.db;
-        FAR.currentConn = cfg;
-        FAR.saveConnToLS(cfg);
+
+        if (FAR.connModalSide) {
+            FAR.applyConnectionToSide(FAR.connModalSide, cfg, res.db, res.fullUrl);
+            FAR.saveSideConnToLS(FAR.connModalSide, cfg);
+        } else {
+            FAR.applyConnectionToBoth(cfg, res.db, res.fullUrl);
+            FAR.saveConnToLS(cfg);
+        }
+
         FAR.updateAuthUI();
         FAR.connModalRequired = false;
         document.getElementById('connModal').classList.add('hidden');
-        FAR.setStatus(`✅ Подключено: ${res.fullUrl} (документов: ${res.info.doc_count || 0})`);
+
+        FAR.setStatus('✅ Подключено: ' + res.fullUrl);
         FAR.toast('Подключение установлено', 'success');
-        await FAR.loadFiles();
+
+        await FAR.loadFilesForSide('left');
+        await FAR.loadFilesForSide('right');
+
         FAR.renderPanel('left');
         FAR.renderPanel('right');
+        FAR.updateConnIndicators();
     } catch (e) {
         console.error('connect error:', e);
         let msg = e && e.message ? e.message : String(e);

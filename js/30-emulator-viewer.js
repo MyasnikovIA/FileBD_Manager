@@ -124,7 +124,9 @@ FAR._loadEmulatorLoader = function() {
 /**
  * Открывает игру в полноэкранной модалке EmulatorJS.
  */
-FAR.openEmulatorViewer = async function (item) {
+FAR.openEmulatorViewer = async function (item, side) {
+    side = side || FAR.activePanel;
+
     if (!FAR.ensureDb()) return;
     if (typeof FAR._ensureItemName === 'function') {
         FAR._ensureItemName(item);
@@ -143,6 +145,7 @@ FAR.openEmulatorViewer = async function (item) {
     try { if (typeof FAR.closeNesViewer === 'function') FAR.closeNesViewer(); } catch (e) {}
 
     FAR._emulatorCurrentItem = item;
+    FAR._emulatorCurrentSide = side;
     FAR._emulatorBlobUrls.forEach(function(u) { try { URL.revokeObjectURL(u); } catch (e) {} });
     FAR._emulatorBlobUrls = [];
 
@@ -177,23 +180,22 @@ FAR.openEmulatorViewer = async function (item) {
     }
     // ================================================
 
-    // ==== Загрузка ROM ====
+    // ==== Загрузка ROM из БД конкретной панели ====
     let blobUrl = null;
     try {
-        const { data, contentType } = await FAR.readFileBody(item);
+        const { data, contentType } = await FAR.readFileBodyFromSide(side, item);
         const blob = new Blob([data], { type: contentType || 'application/octet-stream' });
         blobUrl = URL.createObjectURL(blob);
         FAR._emulatorBlobUrls.push(blobUrl);
         info.textContent = `💾 ${FAR.formatSize(data.length)}`;
     } catch (e) {
-        console.error('openEmulatorViewer: readFileBody failed:', e);
+        console.error('openEmulatorViewer: readFileBodyFromSide failed:', e);
         loading.classList.add('hidden');
         FAR.toast('Не удалось загрузить ROM: ' + e.message, 'error');
         return;
     }
 
     // ==== Готовим EJS_* глобалы ДО loader.js ====
-    // loader.js читает window.EJS_player на верхнем уровне.
     window.EJS_player        = '#emulatorRoot';
     window.EJS_core          = core;
     window.EJS_gameUrl       = blobUrl;
@@ -491,8 +493,9 @@ FAR.downloadCurrentEmulator = async function() {
         FAR.toast('Нет активной игры', 'warning');
         return;
     }
+    const side = FAR._emulatorCurrentSide || FAR.activePanel;
     try {
-        const { data, contentType } = await FAR.readFileBody(FAR._emulatorCurrentItem);
+        const { data, contentType } = await FAR.readFileBodyFromSide(side, FAR._emulatorCurrentItem);
         const blob = new Blob([data], { type: contentType || 'application/octet-stream' });
         FAR.saveBlobAs(blob, FAR.sanitizeFileName(FAR._emulatorCurrentItem.name));
         FAR.toast('Файл сохранён', 'success');
@@ -513,6 +516,7 @@ FAR.closeEmulatorViewer = function() {
     FAR._emulatorBlobUrls = [];
 
     FAR._emulatorCurrentItem = null;
+    FAR._emulatorCurrentSide = null;
 
     try { document.body.focus(); } catch (e) {}
 };

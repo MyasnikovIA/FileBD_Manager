@@ -105,7 +105,9 @@ FAR._loadJsnesDynamically = function() {
 /**
  * Открывает NES-ROM в полноэкранной модалке.
  */
-FAR.openNesViewer = async function(item) {
+FAR.openNesViewer = async function(item, side) {
+    side = side || FAR.activePanel;
+
     if (!FAR.ensureDb()) return;
     if (typeof FAR._ensureItemName === 'function') {
         FAR._ensureItemName(item);
@@ -117,6 +119,7 @@ FAR.openNesViewer = async function(item) {
     try { if (typeof FAR.closeJsdosViewer === 'function') FAR.closeJsdosViewer(); } catch (e) {}
 
     FAR._nesCurrentItem = item;
+    FAR._nesCurrentSide = side;
     FAR._nesBlobUrls.forEach(function(u) { try { URL.revokeObjectURL(u); } catch (e) {} });
     FAR._nesBlobUrls = [];
 
@@ -152,15 +155,15 @@ FAR.openNesViewer = async function(item) {
         return;
     }
 
-    // === ШАГ 2: загрузить ROM из PouchDB ===
+    // === ШАГ 2: загрузить ROM из PouchDB конкретной панели ===
     loadingText.textContent = 'Загрузка ROM…';
     let romBuffer = null;
     try {
-        const { data } = await FAR.readFileBody(item);
+        const { data } = await FAR.readFileBodyFromSide(side, item);
         romBuffer = data;
         info.textContent = `💾 ${FAR.formatSize(data.length)}`;
     } catch (e) {
-        console.error('openNesViewer: readFileBody failed:', e);
+        console.error('openNesViewer: readFileBodyFromSide failed:', e);
         loading.classList.add('hidden');
         FAR.toast('Не удалось загрузить ROM: ' + e.message, 'error');
         return;
@@ -230,6 +233,7 @@ FAR.closeNesViewer = function() {
     if (root) root.innerHTML = '';
 
     FAR._nesCurrentItem = null;
+    FAR._nesCurrentSide = null;
 };
 
 FAR.closeNesViewerOutside = function(e) {
@@ -244,8 +248,9 @@ FAR.downloadCurrentNes = async function() {
         FAR.toast('Нет активной игры', 'warning');
         return;
     }
+    const side = FAR._nesCurrentSide || FAR.activePanel;
     try {
-        const { data, contentType } = await FAR.readFileBody(FAR._nesCurrentItem);
+        const { data, contentType } = await FAR.readFileBodyFromSide(side, FAR._nesCurrentItem);
         const blob = new Blob([data], { type: contentType || 'application/octet-stream' });
         FAR.saveBlobAs(blob, FAR.sanitizeFileName(FAR._nesCurrentItem.name));
         FAR.toast('Файл сохранён', 'success');

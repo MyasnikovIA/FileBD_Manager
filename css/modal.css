@@ -73,3 +73,17 @@
 #connModal .btn-connect { background: #a6e3a1; }
 #connModal .btn-connect:hover { background: #94d98e; }
 #connModal .btn-connect:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Мульти-БД: индикатор «подключение только для панели» */
+.conn-target {
+    padding: 8px 10px;
+    margin-bottom: 12px;
+    border-left: 3px solid #89b4fa;
+    background: #313244;
+    color: #cdd6f4;
+    border-radius: 4px;
+    font-size: 13px;
+}
+.conn-target b {
+    color: #89b4fa;
+    font-weight: 600;
+}
