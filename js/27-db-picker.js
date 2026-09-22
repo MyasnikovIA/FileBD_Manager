@@ -87,33 +87,26 @@ FAR.openDbPicker = function(onConfirm, side) {
     FAR.dbPickerState.selectedFile = null;
     FAR.dbPickerState._bound || FAR._dbPickerBindOnce();
 
-    // Загружаем прошлое состояние
     const saved = FAR._dbPickerLoadState();
     FAR.dbPickerState.currentPath = saved.path || '/';
     FAR.dbPickerState.cursorIdx = 0;
     FAR.dbPickerState.anchorIdx = 0;
 
-    // Показываем модалку
     const modal = document.getElementById('dbPickerModal');
     modal.classList.remove('hidden');
 
-    // Сбрасываем фильтр в UI
     const filterEl = document.getElementById('dbPickerFilter');
     if (filterEl) filterEl.value = '';
 
-    // Сбрасываем превью
     FAR._dbPickerClearPreview();
 
-    // Грузим директорию и рендерим
     FAR._dbPickerLoadDir(FAR.dbPickerState.currentPath).then(function () {
         FAR._dbPickerRestoreCursor(saved.file);
     });
 
-    // Фокус на фильтр
     setTimeout(function() {
         if (filterEl) {
             filterEl.focus();
-            FAR.peLoadPreview();
         }
     }, 50);
 };
@@ -516,6 +509,9 @@ FAR.dbPickerConfirm = function() {
 
     FAR.toast('Выбран файл: ' + st.selectedFile.name, 'success');
     FAR.closeDbPicker();
+    setTimeout(function() {
+        FAR.peLoadPreview();
+    }, 500);
 };
 
 // ============================================================

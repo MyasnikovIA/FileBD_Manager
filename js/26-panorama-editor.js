@@ -195,9 +195,11 @@ FAR.peClearPreview = function() {
 FAR.peBrowseDb = function() {
     const side = FAR._panoCurrentSide || FAR.activePanel;
     FAR.openDbPicker(function(path) {
-        requestAnimationFrame(function() {
+        // dbPickerConfirm уже записал path в peDbPath
+        // Немного ждём, чтобы модалка успела скрыться, и запускаем превью
+        setTimeout(function() {
             FAR.peLoadPreview();
-        });
+        }, 50);
     }, side);
 };
 
@@ -227,11 +229,15 @@ FAR.peLoadPreview = async function() {
 
         if (dbPath) {
             const norm = FAR.normPath(dbPath);
-            itemForTarget = FAR._findDbImageByPath(norm);
+            const side = FAR.dbPickerState.side || FAR._panoCurrentSide || FAR.activePanel;
+
+            // ← асинхронный резолвер (папка / файл / другая директория)
+            itemForTarget = await FAR._findDbImageByPath(norm, side);
             if (!itemForTarget) {
                 throw new Error('Файл не найден в БД: ' + dbPath);
             }
-            const { data, contentType } = await FAR.readFileBody(itemForTarget);
+
+            const { data, contentType } = await FAR.readFileBodyFromSide(side, itemForTarget);
             const blob = new Blob([data], { type: contentType || 'image/jpeg' });
             imageUrl = URL.createObjectURL(blob);
             FAR.peState.previewBlobUrl = imageUrl;
@@ -242,15 +248,11 @@ FAR.peLoadPreview = async function() {
             info.textContent = url;
         }
 
-        let targetHotspots = [];
-        if (itemForTarget) {
-            try {
-                const jsonData = await FAR._findPanoramaJson(itemForTarget);
-                if (jsonData && Array.isArray(jsonData.hotSpots)) {
-                    targetHotspots = FAR._jsonToPannellumHotspots(jsonData, '', imageUrl);
-                }
-            } catch (e) { /* ignore */ }
-        }
+        // ВАЖНО: в редакторе точек предпросмотр целевой сцены
+        // НЕ должен содержать её хотспоты. Иначе Pannellum падает
+        // на хотспотах с type='scene' без panorama_url.
+        // Оставляем только фон — редактирование хотспотов идёт
+        // на основной панораме (в panoramaViewerModal).
 
         // Ждём, пока контейнер получит размеры
         await new Promise(function(resolve) {
@@ -275,7 +277,7 @@ FAR.peLoadPreview = async function() {
             hfov: 100,
             pitch: 0,
             yaw: 0,
-            hotSpots: targetHotspots,
+            hotSpots: [],   // ← пустой массив: рендерим только панораму
             onDblClick: function(coords) {
                 document.getElementById('peTargetPitch').value = coords.pitch.toFixed(2);
                 document.getElementById('peTargetYaw').value = coords.yaw.toFixed(2);
@@ -289,9 +291,7 @@ FAR.peLoadPreview = async function() {
 
         const doResize = function() {
             if (!FAR.peState.previewViewer) return;
-            try {
-                FAR.peState.previewViewer.resize();
-            } catch (e) { /* ignore */ }
+            try { FAR.peState.previewViewer.resize(); } catch (e) {}
         };
         setTimeout(doResize, 50);
         setTimeout(doResize, 200);
@@ -514,7 +514,7 @@ FAR.peSaveHotspot = async function() {
     FAR.peState.editingIndex = -1;
     FAR.peRenderHotspotsList();
     await FAR.peApplyHotspotsToScene();
-    FAR.peResetForm();
+
 };
 
 FAR.peApplyHotspotsToScene = async function() {

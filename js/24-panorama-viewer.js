@@ -104,15 +104,25 @@ FAR._findPanoramaJson = async function(item, side) {
 
     return null;
 };
-
 /**
  * Преобразует JSON с хотспотами FileBD в формат Pannellum.
+ *
+ * ВАЖНО: Pannellum падает, если у хотспота type='scene', но нет
+ * panorama_url (или он пустой). Поэтому «битые» хотспоты мы
+ * отбрасываем здесь — это надёжнее, чем ловить их потом в
+ * Pannellum-обёртке.
  */
 FAR._jsonToPannellumHotspots = function(jsonData, basePath, fallbackImageUrl) {
     const result = [];
     if (!jsonData || !Array.isArray(jsonData.hotSpots)) return result;
 
     jsonData.hotSpots.forEach(function(hs) {
+        if (!hs) return;
+
+        // --- Определяем, куда ведёт хотспот ---
+        const src = hs.source || (hs.dbPath ? 'db' : 'url');
+        const type = hs.type || 'scene';
+
         let relUrl = hs.panorama_url || '';
         let fullUrl = relUrl;
 
@@ -122,17 +132,30 @@ FAR._jsonToPannellumHotspots = function(jsonData, basePath, fallbackImageUrl) {
             fullUrl = cleanBase ? cleanBase + '/' + cleanRel : cleanRel;
         }
 
+        // --- Валидация: scene без источника — отбрасываем ---
+        if (type === 'scene') {
+            const hasUrl = !!(fullUrl && String(fullUrl).trim());
+            const hasDb  = !!(src === 'db' && hs.dbPath && String(hs.dbPath).trim());
+            if (!hasUrl && !hasDb) {
+                console.warn(
+                    '[_jsonToPannellumHotspots] отбрасываю хотспот без источника:',
+                    hs.name || hs.text || hs.id
+                );
+                return;
+            }
+        }
+
         result.push({
             pitch: hs.pitch || 0,
             yaw: hs.yaw || 0,
-            type: hs.type || 'scene',
+            type: type,
             text: hs.text || hs.name || 'Переход',
             panorama_url: fullUrl,
             relativePath: relUrl,
             point_pitch: hs.targetPitch || 0,
             point_yaw: hs.targetYaw || 0,
             targetHfov: hs.targetHfov || 100,
-            source: hs.source || 'url',
+            source: src,
             dbPath: hs.dbPath || '',
             id: hs.id
         });
