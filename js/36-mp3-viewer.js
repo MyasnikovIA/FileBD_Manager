@@ -474,6 +474,11 @@ FAR._mp3PlayTrackByIndex = async function (idx) {
 
     FAR._mp3RenderPlaylist();
 
+    // === Синхронизируем выделение на панели-источнике ===
+    // Чтобы при закрытии плеера курсор и выделение остались
+    // на последнем проигранном файле.
+    FAR._mp3SyncPanelSelection(entry.item, side);
+
     try {
         await FAR._mp3LoadTrack(entry.item, side);
     } catch (e) {
@@ -741,4 +746,52 @@ FAR.downloadCurrentMp3 = async function () {
     } catch (e) {
         FAR.toast('Ошибка скачивания: ' + e.message, 'error');
     }
+};
+
+/**
+ * Синхронизирует выделение и курсор на панели-источнике
+ * с текущим играющим треком.
+ *
+ * Использует FAR._selectFileInPanel (определена в 24-panorama-viewer.js),
+ * которая:
+ *   • ищет файл в текущей директории панели;
+ *   • если файл в другой директории — переходит туда;
+ *   • выставляет selectedIdx / cursor / anchor;
+ *   • перерисовывает панель и прокручивает к курсору.
+ *
+ * Если функция недоступна (например, модуль 24 не загружен) —
+ * падаем на ручной минимум: находим файл среди ctx.files и
+ * выделяем его, не меняя директорию.
+ */
+FAR._mp3SyncPanelSelection = function (item, side) {
+    if (!item || !item._id) return;
+    side = side || FAR._mp3CurrentSide || FAR.activePanel;
+
+    // Основной путь: FAR._selectFileInPanel из 24-panorama-viewer.js
+    if (typeof FAR._selectFileInPanel === 'function') {
+        try {
+            FAR._selectFileInPanel(item, side);
+            return;
+        } catch (e) {
+            console.warn('_mp3SyncPanelSelection: _selectFileInPanel failed:', e);
+        }
+    }
+
+    // Fallback: выделяем в текущей директории, если файл там есть
+    const ctx = FAR.side[side];
+    if (!ctx || !Array.isArray(ctx.files)) return;
+
+    const idx = ctx.files.findIndex(function (f) {
+        return f && f._id === item._id;
+    });
+    if (idx < 0) return;
+
+    ctx.selectedIdx.clear();
+    ctx.selectedIdx.add(idx);
+    ctx.cursor = idx;
+    ctx.anchor = idx;
+
+    try { FAR.renderPanel(side, { skipLoad: true }); } catch (e) {}
+    try { FAR.scrollCursorIntoView(side); } catch (e) {}
+    try { FAR.saveUiState(); } catch (e) {}
 };
