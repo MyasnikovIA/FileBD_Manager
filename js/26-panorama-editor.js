@@ -386,8 +386,9 @@ FAR.peCaptureDirection = function() {
         document.getElementById('peTargetPitch').value = pitch.toFixed(2);
         document.getElementById('peTargetYaw').value = yaw.toFixed(2);
 
-        FAR.toast('Направление зафиксировано: Pitch=' + pitch.toFixed(1) +
-                  ', Yaw=' + yaw.toFixed(1), 'success');
+        FAR.toast('Направление зафиксировано: Pitch=' + pitch.toFixed(1) + ', Yaw=' + yaw.toFixed(1), 'success');
+        FAR.peSaveHotspot(); // Опционально, для снижения количество телодвижений
+        FAR.peExportJson();
     } catch (e) {
         FAR.toast('Не удалось прочитать направление', 'error');
     }
