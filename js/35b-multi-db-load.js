@@ -89,51 +89,53 @@ FAR.readFileBodyFromSide = async function (side, item) {
     const s = FAR.side[side];
     if (!s || !s.db) throw new Error('Нет БД для панели ' + side);
 
-    let data = null;
-    let contentType = item.contentType || 'application/octet-stream';
+    const contentType = item.contentType || 'application/octet-stream';
 
+    // 1. Основной путь: вложение 'b' в самом документе
     try {
         const blob = await s.db.getAttachment(item._id, 'b');
         const buf = await blob.arrayBuffer();
-        data = new Uint8Array(buf);
-        contentType = blob.type || contentType;
-        return { data: data, contentType: contentType };
+        return {
+            data: new Uint8Array(buf),
+            contentType: blob.type || contentType
+        };
     } catch (e) {
-        const doc = await s.db.get(item._id);
-        let metaObj = null;
-        if (doc.meta && typeof doc.meta === 'string') {
-            try {
-                const plain = await FAR.decryptString(doc.meta);
-                metaObj = JSON.parse(plain);
-            } catch (e2) {}
-        }
-        const children = (metaObj && metaObj.children) || doc.children || item.children || [];
-        if (children.length > 0) {
-            const chunks = [];
-            for (const chunkId of children) {
-                try {
-                    const blob = await s.db.getAttachment(chunkId, 'b');
-                    const buf = new Uint8Array(await blob.arrayBuffer());
-                    try {
-                        const salt = buf.slice(0, FAR.ET);
-                        const iv = buf.slice(FAR.ET, FAR.ET + FAR.IT);
-                        const d = buf.slice(FAR.ET + FAR.IT);
-                        const key = await FAR.deriveKey(FAR.PASSPHRASE, salt);
-                        const dec = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, d);
-                        chunks.push(new Uint8Array(dec));
-                    } catch (e3) {
-                        chunks.push(buf);
-                    }
-                } catch (e3) {}
-            }
-            const total = chunks.reduce(function (sum, c) { return sum + c.length; }, 0);
-            data = new Uint8Array(total);
-            let off = 0;
-            for (const c of chunks) { data.set(c, off); off += c.length; }
-            return { data: data, contentType: contentType };
+        if (e.status !== 404) throw e;   // сеть/401 — не маскируем
+    }
+
+    // 2. Fallback: открытые чанки (без шифрования).
+    //    Ищем детей либо в doc.children, либо в item.children.
+    const doc = await s.db.get(item._id);
+    const children = doc.children || item.children || [];
+
+    if (children.length === 0) {
+        throw new Error('Файл не содержит данных (нет вложения b и нет чанков)');
+    }
+
+    const chunks = [];
+    for (const chunkId of children) {
+        try {
+            const blob = await s.db.getAttachment(chunkId, 'b');
+            const buf = new Uint8Array(await blob.arrayBuffer());
+            chunks.push(buf);
+        } catch (e3) {
+            if (e3.status !== 404) throw e3;
         }
     }
-    throw new Error('Не удалось получить данные файла');
+
+    if (chunks.length === 0) {
+        throw new Error('Чанки найдены, но данные прочитать не удалось');
+    }
+
+    const total = chunks.reduce(function (sum, c) { return sum + c.length; }, 0);
+    const data = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) {
+        data.set(c, off);
+        off += c.length;
+    }
+
+    return { data: data, contentType: contentType };
 };
 
 // ============================================================
