@@ -9,7 +9,8 @@ FAR.peState = {
     previewViewer: null,
     previewBlobUrl: null,
     previewItem: null,
-    _bound: false
+    _bound: false,
+    _previewDblClickHandler: null
 };
 
 FAR._peToNum = function(v, def) {
@@ -96,6 +97,9 @@ FAR.openPanoramaEditor = async function(coords) {
 FAR.closePanoramaEditor = function() {
     FAR.peStopDirectionWatch();
 
+    // Снять обработчик dblclick с превью
+    FAR.peDetachPreviewDblClick();
+
     const modal = document.getElementById('panoramaEditorModal');
     if (modal) modal.classList.add('hidden');
 
@@ -143,6 +147,55 @@ FAR.peBindHandlersOnce = function() {
 };
 
 // ============================================================
+// Подписка / отписка обработчика двойного клика по превью
+// ============================================================
+//
+// Pannellum при doubleClickZoom:false НЕ вызывает config.onDblClick
+// (обработчик onDocumentDoubleClick вешается только при
+// doubleClickZoom:true). Поэтому навешиваем свой DOM-обработчик
+// прямо на #pePreviewWrapper.
+
+FAR.peDetachPreviewDblClick = function() {
+    const wrapperEl = document.getElementById('pePreviewWrapper');
+    if (!wrapperEl) return;
+    if (FAR.peState._previewDblClickHandler) {
+        try {
+            wrapperEl.removeEventListener('dblclick', FAR.peState._previewDblClickHandler);
+        } catch (e) {}
+        FAR.peState._previewDblClickHandler = null;
+    }
+};
+
+FAR.peAttachPreviewDblClick = function() {
+    const wrapperEl = document.getElementById('pePreviewWrapper');
+    if (!wrapperEl) return;
+
+    // Сначала снимаем старый, чтобы не накапливать
+    FAR.peDetachPreviewDblClick();
+
+    FAR.peState._previewDblClickHandler = function(e) {
+        // Не мешаем кликам по контролам Pannellum
+        if (e.target && e.target.closest && (
+            e.target.closest('.pnlm-controls-container') ||
+            e.target.closest('.pnlm-control') ||
+            e.target.closest('.pnlm-zoom-controls') ||
+            e.target.closest('.pnlm-fullscreen-toggle-button') ||
+            e.target.closest('.pnlm-compass')
+        )) {
+            return;
+        }
+
+        e.stopPropagation();
+        e.preventDefault();
+
+        // Основное действие: зафиксировать текущее направление камеры
+        FAR.peCaptureDirection();
+    };
+
+    wrapperEl.addEventListener('dblclick', FAR.peState._previewDblClickHandler);
+};
+
+// ============================================================
 // Форма
 // ============================================================
 
@@ -165,6 +218,7 @@ FAR.peResetForm = function() {
 
 FAR.peClearPreview = function() {
     FAR.peStopDirectionWatch();
+    FAR.peDetachPreviewDblClick();
 
     document.getElementById('pePreviewWrapper').classList.remove('loaded');
     document.getElementById('pePreviewCanvas').innerHTML = '';
@@ -279,6 +333,9 @@ FAR.peLoadPreview = async function() {
             yaw: 0,
             hotSpots: [],   // ← пустой массив: рендерим только панораму
             onDblClick: function(coords) {
+                // ВНИМАНИЕ: этот колбэк НЕ вызывается Pannellum
+                // при doubleClickZoom:false. Оставлен для совместимости,
+                // если doubleClickZoom когда-нибудь включат.
                 document.getElementById('peTargetPitch').value = coords.pitch.toFixed(2);
                 document.getElementById('peTargetYaw').value = coords.yaw.toFixed(2);
                 FAR.toast('Направление: Pitch=' + coords.pitch.toFixed(1) +
@@ -288,6 +345,9 @@ FAR.peLoadPreview = async function() {
 
         FAR.peState.previewViewer = window.pannellum.viewer('pePreviewCanvas', config);
         wrapper.classList.add('loaded');
+
+        // >>> ДОБАВЛЕНО: свой обработчик двойного клика на wrapper <<<
+        FAR.peAttachPreviewDblClick();
 
         const doResize = function() {
             if (!FAR.peState.previewViewer) return;
@@ -387,7 +447,7 @@ FAR.peCaptureDirection = function() {
         document.getElementById('peTargetYaw').value = yaw.toFixed(2);
 
         FAR.toast('Направление зафиксировано: Pitch=' + pitch.toFixed(1) + ', Yaw=' + yaw.toFixed(1), 'success');
-        FAR.peSaveHotspot(); // Опционально, для снижения количество телодвижений
+        FAR.peSaveHotspot(); // Опционально, для снижения количества телодвижений
         FAR.peExportJson();
     } catch (e) {
         FAR.toast('Не удалось прочитать направление', 'error');
@@ -596,11 +656,9 @@ FAR._panoReloadWithHotspots = async function(item, hotspots) {
             hfov: savedHfov,
             pitch: savedPitch,
             yaw: savedYaw,
-            hotSpots: pannellumHotspots,
-            onClickHotSpot: function(hs) {
-                FAR._onPanoramaHotspotClick(hs);
-                return true;
-            }
+            hotSpots: pannellumHotspots
+            // onClickHotSpot НЕ передаём — перехват делает
+            // FAR._panoAttachHotspotInterceptors в 24-panorama-viewer.js
         };
 
         FAR._panoViewer = window.pannellum.viewer('panoramaCanvas', config);
