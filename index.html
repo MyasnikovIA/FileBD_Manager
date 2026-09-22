@@ -58,6 +58,7 @@
             <div class="panel-header">
                 <span class="path" id="pathLeft">/</span>
                 <div class="nav-buttons">
+                    <button onclick="event.stopPropagation(); FAR.openConnModal(false, 'left')" title="Сменить БД для левой панели">🗄️</button>
                     <button onclick="event.stopPropagation(); FAR.navigatePanel('left', '..')">⬆</button>
                     <button onclick="event.stopPropagation(); FAR.navigatePanel('left', '/')">🏠</button>
                 </div>
@@ -73,6 +74,7 @@
             <div class="panel-header">
                 <span class="path" id="pathRight">/</span>
                 <div class="nav-buttons">
+                    <button onclick="event.stopPropagation(); FAR.openConnModal(false, 'right')" title="Сменить БД для правой панели">🗄️</button>
                     <button onclick="event.stopPropagation(); FAR.navigatePanel('right', '..')">⬆</button>
                     <button onclick="event.stopPropagation(); FAR.navigatePanel('right', '/')">🏠</button>
                 </div>

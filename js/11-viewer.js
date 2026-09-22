@@ -26,6 +26,7 @@
 // --- Состояние навигации просмотрщика ---
 FAR._viewerSide  = null;   // 'left' | 'right' — панель, из которой открыт файл
 FAR._viewerIndex = -1;     // индекс открытого файла в FAR.side[side].files
+FAR._viewerToken = 0;      // токен для отмены устаревших открытий
 
 // --- Все модалки-просмотрщики и их кнопки навигации ---
 FAR.VIEWER_MODALS = [
@@ -36,6 +37,20 @@ FAR.VIEWER_MODALS = [
     { modal: 'nesViewerModal',         prev: 'nesPrevBtn',    next: 'nesNextBtn'    },
     { modal: 'emulatorViewerModal',    prev: 'emuPrevBtn',    next: 'emuNextBtn'    }
 ];
+
+/**
+ * Проверяет, что нужный модуль-просмотрщик загружен.
+ * Если нет — пишет понятную ошибку в консоль и возвращает false.
+ */
+FAR._viewerEnsureFn = function (name) {
+    if (typeof FAR[name] === 'function') return true;
+    console.error(
+        '[viewer] Функция FAR.' + name + ' не найдена. ' +
+        'Проверьте, что соответствующий модуль подключён в index.html ' +
+        'и не упал с синтаксической ошибкой.'
+    );
+    return false;
+};
 
 /**
  * Ищет ближайший файл (не папку) в направлении dir (-1 | +1)
@@ -109,12 +124,12 @@ FAR._viewerUpdateNavButtons = function () {
  * Используется только как страховка перед открытием следующего файла.
  */
 FAR._viewerCloseAll = function () {
-    try { if (typeof FAR.closeViewer        === 'function') FAR.closeViewer();        } catch (e) {}
-    try { if (typeof FAR.closePanoramaViewer=== 'function') FAR.closePanoramaViewer();} catch (e) {}
-    try { if (typeof FAR.closePdfViewer     === 'function') FAR.closePdfViewer();     } catch (e) {}
-    try { if (typeof FAR.closeJsdosViewer   === 'function') FAR.closeJsdosViewer();   } catch (e) {}
-    try { if (typeof FAR.closeNesViewer     === 'function') FAR.closeNesViewer();     } catch (e) {}
-    try { if (typeof FAR.closeEmulatorViewer=== 'function') FAR.closeEmulatorViewer();} catch (e) {}
+    try { if (typeof FAR.closeViewer         === 'function') FAR.closeViewer();         } catch (e) {}
+    try { if (typeof FAR.closePanoramaViewer === 'function') FAR.closePanoramaViewer(); } catch (e) {}
+    try { if (typeof FAR.closePdfViewer      === 'function') FAR.closePdfViewer();      } catch (e) {}
+    try { if (typeof FAR.closeJsdosViewer    === 'function') FAR.closeJsdosViewer();    } catch (e) {}
+    try { if (typeof FAR.closeNesViewer      === 'function') FAR.closeNesViewer();      } catch (e) {}
+    try { if (typeof FAR.closeEmulatorViewer === 'function') FAR.closeEmulatorViewer(); } catch (e) {}
 };
 
 /**
@@ -176,6 +191,20 @@ FAR.viewerNavigate = async function (dir) {
 };
 
 /**
+ * Читает тело файла из БД нужной стороны.
+ * Если readFileBodyFromSide недоступен — падает на старый readFileBody.
+ */
+FAR._viewerReadBody = async function (side, item) {
+    if (typeof FAR.readFileBodyFromSide === 'function') {
+        return FAR.readFileBodyFromSide(side, item);
+    }
+    if (typeof FAR.readFileBody === 'function') {
+        return FAR.readFileBody(item);
+    }
+    throw new Error('Ни readFileBodyFromSide, ни readFileBody не загружены');
+};
+
+/**
  * Открывает файл в подходящем просмотрщике.
  *
  * @param {Object} item    — элемент из fileIndex (file, не folder)
@@ -198,10 +227,16 @@ FAR.openFile = async function (item, side, index) {
         ? index
         : FAR._viewerResolveIndex(side, item);
 
+    // Уникальный токен текущего открытия — защита от гонок при
+    // быстром перещёлкивании ◀/▶, когда старый openFile ещё не завершился.
+    const myToken = ++FAR._viewerToken;
+
     // ===== ПРОВЕРКА 1: JSDOS =====
     try {
         if (typeof FAR.isJsdos === 'function' && FAR.isJsdos(item)) {
+            if (!FAR._viewerEnsureFn('openJsdosViewer')) return;
             await FAR.openJsdosViewer(item, side);
+            if (myToken !== FAR._viewerToken) return; // устарело
             FAR._viewerUpdateNavButtons();
             return;
         }
@@ -212,7 +247,9 @@ FAR.openFile = async function (item, side, index) {
     // ===== ПРОВЕРКА 2: NES =====
     try {
         if (typeof FAR.isNes === 'function' && FAR.isNes(item)) {
+            if (!FAR._viewerEnsureFn('openNesViewer')) return;
             await FAR.openNesViewer(item, side);
+            if (myToken !== FAR._viewerToken) return;
             FAR._viewerUpdateNavButtons();
             return;
         }
@@ -223,7 +260,9 @@ FAR.openFile = async function (item, side, index) {
     // ===== ПРОВЕРКА 3: EmulatorJS =====
     try {
         if (typeof FAR.isEmulatorFile === 'function' && FAR.isEmulatorFile(item)) {
+            if (!FAR._viewerEnsureFn('openEmulatorViewer')) return;
             await FAR.openEmulatorViewer(item, side);
+            if (myToken !== FAR._viewerToken) return;
             FAR._viewerUpdateNavButtons();
             return;
         }
@@ -234,7 +273,9 @@ FAR.openFile = async function (item, side, index) {
     // ===== ПРОВЕРКА 4: PDF =====
     try {
         if (typeof FAR.isPdf === 'function' && FAR.isPdf(item)) {
+            if (!FAR._viewerEnsureFn('openPdfViewer')) return;
             await FAR.openPdfViewer(item, side);
+            if (myToken !== FAR._viewerToken) return;
             FAR._viewerUpdateNavButtons();
             return;
         }
@@ -244,11 +285,16 @@ FAR.openFile = async function (item, side, index) {
 
     // ===== ПРОВЕРКА 5: Панорама =====
     try {
-        const isPano = await FAR.isPanorama(item, side);
-        if (isPano) {
-            await FAR.openPanoramaViewer(item, side);
-            FAR._viewerUpdateNavButtons();
-            return;
+        if (typeof FAR.isPanorama === 'function') {
+            const isPano = await FAR.isPanorama(item, side);
+            if (myToken !== FAR._viewerToken) return; // устарело
+            if (isPano) {
+                if (!FAR._viewerEnsureFn('openPanoramaViewer')) return;
+                await FAR.openPanoramaViewer(item, side);
+                if (myToken !== FAR._viewerToken) return;
+                FAR._viewerUpdateNavButtons();
+                return;
+            }
         }
     } catch (e) {
         console.warn('Ошибка проверки на панораму:', e);
@@ -260,15 +306,25 @@ FAR.openFile = async function (item, side, index) {
     const body  = document.getElementById('viewerBody');
     const info  = document.getElementById('viewerInfo');
 
+    if (!modal || !title || !body || !info) {
+        console.error('[viewer] viewerModal/viewerTitle/viewerBody/viewerInfo не найдены в DOM');
+        FAR.toast('Модалка просмотра не найдена', 'error');
+        return;
+    }
+
     modal.classList.remove('hidden');
-    title.textContent = `📄 ${item.name}`;
+    title.textContent = '📄 ' + item.name;
     body.innerHTML = '<div style="text-align:center;padding:40px;color:#a6adc8;">Загрузка…</div>';
     info.textContent = '';
 
     FAR._viewerUpdateNavButtons();
 
     try {
-        const { data, contentType } = await FAR.readFileBodyFromSide(side, item);
+        const res = await FAR._viewerReadBody(side, item);
+        if (myToken !== FAR._viewerToken) return; // устарело
+
+        const data = res.data;
+        const contentType = res.contentType || item.contentType || 'application/octet-stream';
 
         FAR.currentFileData = data;
         FAR.currentFileName = item.name;
@@ -306,24 +362,35 @@ FAR.openFile = async function (item, side, index) {
         info.textContent = 'Ошибка';
     }
 
+    if (myToken !== FAR._viewerToken) return;
     FAR._viewerUpdateNavButtons();
 };
 
-FAR.closeViewer = function() {
-    document.getElementById('viewerModal').classList.add('hidden');
-    document.getElementById('viewerBody').innerHTML = '';
+FAR.closeViewer = function () {
+    const modal = document.getElementById('viewerModal');
+    if (modal) modal.classList.add('hidden');
+    const body = document.getElementById('viewerBody');
+    if (body) body.innerHTML = '';
     FAR.currentFileData = null;
     FAR._viewerUpdateNavButtons();
 };
 
-FAR.closeViewerOutside = function(e) {
+FAR.closeViewerOutside = function (e) {
     if (e.target === e.currentTarget) FAR.closeViewer();
 };
 
-FAR.downloadCurrentFile = async function() {
-    if (!FAR.currentFileData) { FAR.toast('Нет данных', 'warning'); return; }
+FAR.downloadCurrentFile = async function () {
+    if (!FAR.currentFileData) {
+        FAR.toast('Нет данных', 'warning');
+        return;
+    }
 
-    FAR.startProgress('📥', `Скачивание "${FAR.currentFileName}" (${FAR.formatSize(FAR.currentFileData.length)})`, 1, function() {});
+    FAR.startProgress(
+        '📥',
+        `Скачивание "${FAR.currentFileName}" (${FAR.formatSize(FAR.currentFileData.length)})`,
+        1,
+        function () {}
+    );
     FAR.progressLog(`📥 Подготовка ${FAR.currentFileName}`, 'info');
     FAR.updateProgress(0, 1, FAR.currentFileName, 0);
 
@@ -334,7 +401,7 @@ FAR.downloadCurrentFile = async function() {
         FAR.updateProgress(1, 1, FAR.currentFileName, 0);
         FAR.progressLog(`✅ ${FAR.currentFileName} — сохранено`, 'ok');
         FAR.finishProgress(0);
-        FAR.progressLog(`━━━ Готово`, 'ok');
+        FAR.progressLog('━━━ Готово', 'ok');
 
         FAR.toast('Файл сохранён', 'success');
     } catch (e) {
