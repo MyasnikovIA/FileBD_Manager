@@ -1,28 +1,78 @@
-FAR.deleteSelected = async function() {
+// ============================================================
+// Удаление выделенного (файлы + папки с содержимым).
+// ============================================================
+//
+// ЛЕНИВАЯ ЗАГРУЗКА:
+//   Раньше для папок содержимое бралось из глобального
+//   FAR.fileIndex. Теперь fileIndex — это только текущая
+//   директория. Для рекурсивного удаления используем
+//   FAR.listRecursiveFromSide(side, folderPath).
+
+FAR.deleteSelected = async function () {
     if (!FAR.ensureDb()) return;
+
+    const side = FAR.activePanel;
+    const ctx = FAR.side[side];
+    if (!ctx || !ctx.db) { FAR.toast('Панель не подключена', 'warning'); return; }
+
     const selected = FAR.getSelectedItemsFromActivePanel();
     if (selected.length === 0) { FAR.toast('Ничего не выбрано', 'warning'); return; }
 
-    let totalToDelete = 0;
+    // ============================================================
+    // 1. Собираем плоский список документов к удалению
+    // ============================================================
     const filesToDelete = [];
+    const folderIdsToDelete = [];   // для удаления самих папок
+    const seenIds = new Set();
+
     for (const sel of selected) {
         const item = sel.item;
+
         if (item.isFolder) {
-            const prefix = item.path + '/';
-            const children = FAR.fileIndex.filter(f =>
-                f.path === item.path || f.path.startsWith(prefix)
-            );
-            totalToDelete += children.length;
-            filesToDelete.push(...children);
+            // Сама папка
+            if (!seenIds.has(item._id)) {
+                seenIds.add(item._id);
+                folderIdsToDelete.push(item._id);
+                filesToDelete.push({ _id: item._id, path: item.path });
+            }
+
+            // Рекурсивный обход из БД
+            try {
+                const children = await FAR.listRecursiveFromSide(side, item.path);
+                for (const c of children) {
+                    if (seenIds.has(c._id)) continue;
+                    seenIds.add(c._id);
+                    filesToDelete.push({ _id: c._id, path: c.path });
+                    if (c.isFolder || c.docType === 'folder') {
+                        folderIdsToDelete.push(c._id);
+                    }
+                }
+            } catch (e) {
+                FAR.toast('Ошибка обхода ' + item.path + ': ' + e.message, 'error');
+            }
         } else {
-            totalToDelete++;
-            filesToDelete.push(item);
+            if (seenIds.has(item._id)) continue;
+            seenIds.add(item._id);
+            filesToDelete.push({ _id: item._id, path: item.path });
         }
     }
 
-    if (!confirm(`Удалить ${selected.length} элемент(ов)?\n(Всего будет удалено ${totalToDelete} документов)`)) return;
+    if (filesToDelete.length === 0) {
+        FAR.toast('Нечего удалять', 'warning');
+        return;
+    }
 
-    FAR.startProgress('🗑️', `Удаление ${totalToDelete} документов`, totalToDelete, function() {});
+    if (!confirm(`Удалить ${selected.length} элемент(ов)?\n(Всего будет удалено ${filesToDelete.length} документов)`)) return;
+
+    FAR.startProgress('🗑️', `Удаление ${filesToDelete.length} документов`, filesToDelete.length, function () {});
+
+    // ============================================================
+    // 2. Удаляем. Порядок: сначала файлы/вложенные папки,
+    //    потом папки (сортировка по убыванию длины пути).
+    // ============================================================
+    filesToDelete.sort(function (a, b) {
+        return (b.path || '').length - (a.path || '').length;
+    });
 
     let ok = 0, err = 0;
     const deletedIds = new Set();
@@ -32,26 +82,40 @@ FAR.deleteSelected = async function() {
         const f = filesToDelete[i];
         FAR.updateProgress(i, filesToDelete.length, f.path, err);
         try {
-            const d = await FAR.db.get(f._id);
-            await FAR.db.remove(d);
+            const d = await ctx.db.get(f._id);
+            await ctx.db.remove(d);
             deletedIds.add(f._id);
             ok++;
             FAR.progressLog(`✅ ${f.path}`, 'ok');
         } catch (e) {
-            err++;
-            FAR.progressLog(`❌ ${f.path}: ${e.message}`, 'err');
+            if (e.status === 404) {
+                // уже удалён — не ошибка
+                deletedIds.add(f._id);
+                ok++;
+                FAR.progressLog(`⏭ ${f.path} — уже удалён`, 'warn');
+            } else {
+                err++;
+                FAR.progressLog(`❌ ${f.path}: ${e.message}`, 'err');
+            }
         }
         FAR.updateProgress(i + 1, filesToDelete.length, f.path, err);
     }
 
-    FAR.fileIndex = FAR.fileIndex.filter(f => !deletedIds.has(f._id));
-    if (FAR.activePanel === 'left') { FAR.leftSelectedIdx.clear(); FAR.leftAnchor = -1; }
-    else { FAR.rightSelectedIdx.clear(); FAR.rightAnchor = -1; }
+    // ============================================================
+    // 3. Чистим выделение и перезагружаем панель
+    // ============================================================
+    ctx.selectedIdx.clear();
+    ctx.anchor = -1;
+
+    // Курсор подрезаем под размер списка
+    if (ctx.files.length > 0 && ctx.cursor >= ctx.files.length) {
+        ctx.cursor = ctx.files.length - 1;
+    }
 
     FAR.finishProgress(err);
     FAR.progressLog(`━━━ Готово: ${ok} удалено, ${err} ошибок`, ok > 0 ? 'ok' : 'err');
-    FAR.renderPanel('left');
-    FAR.renderPanel('right');
+
+    await FAR.reloadPanel(side);
     FAR.setStatus(`✅ Удалено: ${ok}, ошибок: ${err}`);
     FAR.toast(`Удалено ${ok} из ${filesToDelete.length}`, ok ? 'success' : 'error');
 };

@@ -109,3 +109,17 @@
     user-select: none;
 }
 .db-badge:hover { background: #45475a; }
+
+.file-list {
+    position: relative;
+    overflow-y: auto;
+}
+
+.file-list-spacer {
+    position: relative;
+    width: 100%;
+}
+
+.file-item {
+    box-sizing: border-box;
+}

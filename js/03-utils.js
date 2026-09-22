@@ -159,28 +159,31 @@ FAR.restoreUiState = function() {
         }
     }
 
+    // Восстанавливаем пути и (опционально) грузим их
+    const restorePromises = [];
     if (typeof st.leftPath === 'string' && st.leftPath) {
-        FAR.leftPath = st.leftPath;
+        FAR.side.left.path = st.leftPath;
+        FAR.side.left._loadedDir = null;
+        restorePromises.push(FAR.ensureDirLoaded('left', st.leftPath, { silent: true }));
     }
     if (typeof st.rightPath === 'string' && st.rightPath) {
-        FAR.rightPath = st.rightPath;
+        FAR.side.right.path = st.rightPath;
+        FAR.side.right._loadedDir = null;
+        restorePromises.push(FAR.ensureDirLoaded('right', st.rightPath, { silent: true }));
     }
 
-    // Перерисовываем обе панели — renderPanel сам подрежет
-    // курсор под размер списка, если файл пропал.
-    FAR.renderPanel('left');
-    FAR.renderPanel('right');
+    return Promise.all(restorePromises).then(function() {
+        FAR.renderPanel('left',  { skipLoad: true });
+        FAR.renderPanel('right', { skipLoad: true });
 
-    // Восстанавливаем курсор на панелях: сначала пробуем по имени,
-    // если файл найден — ставим на него; иначе — по индексу.
-    FAR._restoreCursor('left', st.leftFile, st.leftCursor);
-    FAR._restoreCursor('right', st.rightFile, st.rightCursor);
+        FAR._restoreCursor('left',  st.leftFile,  st.leftCursor);
+        FAR._restoreCursor('right', st.rightFile, st.rightCursor);
 
-    // Перерисовываем ещё раз, чтобы отобразить новый курсор
-    FAR.renderPanel('left');
-    FAR.renderPanel('right');
+        FAR.renderPanel('left',  { skipLoad: true });
+        FAR.renderPanel('right', { skipLoad: true });
 
-    return true;
+        return true;
+    });
 };
 
 /**

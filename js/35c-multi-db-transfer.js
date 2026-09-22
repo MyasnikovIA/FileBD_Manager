@@ -6,11 +6,15 @@
 // Модуль подключается ПОСЛЕ 35a и 35b, т.к. использует:
 //   - FAR.side[side] (35a)
 //   - FAR.readFileBodyFromSide (35b)
+//   - FAR.listRecursiveFromSide (06-files.js)
+//
+// ВАЖНО (ленивая загрузка):
+//   Раньше для обхода вложенных папок использовался
+//   srcSelected.fileIndex — глобальный индекс, загруженный
+//   целиком. Теперь fileIndex содержит только текущую
+//   директорию, поэтому обход делается через рекурсивный
+//   запрос к БД: FAR.listRecursiveFromSide(src, folderPath).
 
-/**
- * Универсальная копия/перенос между панелями, учитывающая разные БД.
- * mode: 'copy' | 'move'
- */
 FAR.transferBetweenSides = async function (mode) {
     const src = FAR.activePanel;
     const dst = src === 'left' ? 'right' : 'left';
@@ -29,11 +33,9 @@ FAR.transferBetweenSides = async function (mode) {
     // ============================================================
     // 1. Разворачиваем выделение в плоский список задач
     // ============================================================
-    const srcSelected = FAR.side[src];
-    const tasks = [];             // порядок: сначала все папки, потом файлы
     const folderTasks = [];
-    const fileTasks = [];
-    const srcItemsToRemove = [];  // для mode === 'move'
+    const fileTasks   = [];
+    const srcItemsToRemove = [];
 
     for (const sel of selected) {
         const item = sel.item;
@@ -48,18 +50,20 @@ FAR.transferBetweenSides = async function (mode) {
             // Сама папка
             folderTasks.push({ srcPath: srcFolderPath, dstPath: dstFolderPath });
 
-            // Все вложенные документы (папки и файлы) из индекса источника
+            // РЕКУРСИВНЫЙ обход из БД (ленивая загрузка!)
+            const children = await FAR.listRecursiveFromSide(src, srcFolderPath);
             const prefix = srcFolderPath + '/';
-            for (const idxItem of srcSelected.fileIndex) {
+
+            for (const idxItem of children) {
                 const ip = FAR.normPath(idxItem.path);
                 if (!ip.startsWith(prefix)) continue;
 
                 const rel = ip.substring(prefix.length);
                 const dstPath = FAR.normPath(dstFolderPath + '/' + rel);
 
-                if (idxItem.docType === 'folder') {
+                if (idxItem.docType === 'folder' || idxItem.isFolder) {
                     folderTasks.push({ srcPath: ip, dstPath: dstPath });
-                } else if (idxItem.docType === 'file') {
+                } else if (idxItem.docType === 'file' || !idxItem.isFolder) {
                     fileTasks.push({ srcItem: idxItem, srcPath: ip, dstPath: dstPath });
                 }
             }
@@ -73,7 +77,7 @@ FAR.transferBetweenSides = async function (mode) {
         }
     }
 
-    // Убираем дубли папок (могут пересекаться, если пользователь выделил и родителя, и ребёнка)
+    // Убираем дубли папок
     const folderSeen = new Set();
     const uniqueFolders = [];
     for (const f of folderTasks) {
@@ -81,7 +85,6 @@ FAR.transferBetweenSides = async function (mode) {
         folderSeen.add(f.dstPath);
         uniqueFolders.push(f);
     }
-    // Сортируем по длине пути: сначала родители, чтобы вложенные создавались после
     uniqueFolders.sort(function (a, b) { return a.dstPath.length - b.dstPath.length; });
 
     const totalSteps = uniqueFolders.length + fileTasks.length;
@@ -130,12 +133,6 @@ FAR.transferBetweenSides = async function (mode) {
             if (rev) doc._rev = rev;
             await sDst.db.put(doc);
 
-            if (!sDst.fileIndex.find(function (x) { return x._id === docId; })) {
-                sDst.fileIndex.push({
-                    _id: docId, path: f.dstPath, size: 0, mtime: doc.mtime,
-                    binary: false, children: [], docType: 'folder'
-                });
-            }
             ok++;
             FAR.progressLog('✅ ' + f.dstPath, 'ok');
         } catch (e) {
@@ -156,13 +153,11 @@ FAR.transferBetweenSides = async function (mode) {
         FAR.progressLog((mode === 'move' ? '✂️ ' : '📋 ') + t.dstPath + sameLabel, 'info');
 
         try {
-            // Читаем тело из БД-источника
             const res = await FAR.readFileBodyFromSide(src, t.srcItem);
             const blob = new Blob([res.data], { type: res.contentType });
 
             const newId = 'f:' + encodeURIComponent(t.dstPath);
 
-            // Удаляем существующий док в целевой БД (если есть)
             try { const ex = await sDst.db.get(newId); await sDst.db.remove(ex); }
             catch (e) { if (e.status !== 404) throw e; }
 
@@ -178,15 +173,6 @@ FAR.transferBetweenSides = async function (mode) {
             await sDst.db.putAttachment(newId, 'b', fresh._rev, blob,
                 res.contentType || 'application/octet-stream');
 
-            if (!sDst.fileIndex.find(function (x) { return x._id === newId; })) {
-                sDst.fileIndex.push({
-                    _id: newId, path: t.dstPath, size: res.data.length, mtime: doc.mtime,
-                    binary: t.srcItem.binary || false, children: [],
-                    contentType: res.contentType || '', docType: 'file'
-                });
-            }
-
-            // Запоминаем исходный _id для удаления (mode === 'move')
             if (mode === 'move') {
                 srcItemsToRemove.push(t.srcItem._id);
             }
@@ -215,53 +201,18 @@ FAR.transferBetweenSides = async function (mode) {
                 FAR.progressLog('⚠️ не удалён ' + srcId + ': ' + e.message, 'warn');
             }
         }
-    }
 
-    // Обновляем индексы обеих сторон
-    if (mode === 'move' && srcItemsToRemove.length > 0) {
-        const removeSet = new Set(srcItemsToRemove);
+        // Удаляем исходные папки (снизу вверх, чтобы вложенные
+        // удалились раньше родителей)
+        const folderIdsToRemove = selected
+            .filter(function (sel) { return sel.item.isFolder; })
+            .map(function (sel) { return sel.item._id; });
 
-        // Удаляем перемещённые файлы
-        sSrc.fileIndex = sSrc.fileIndex.filter(function (f) {
-            return !removeSet.has(f._id);
-        });
+        folderIdsToRemove.sort(function (a, b) { return b.length - a.length; });
 
-        // Удаляем папки, которые теперь пусты (все дети удалены)
-        // Проходим несколько раз, чтобы удалить и вложенные пустые папки
-        let changed = true;
-        let guard = 0;
-        while (changed && guard < 50) {
-            changed = false;
-            guard++;
-            const stillHasChild = new Set();
-            for (const f of sSrc.fileIndex) {
-                if (f.docType !== 'folder') continue;
-                const p = FAR.normPath(f.path);
-                const prefix = p + '/';
-                const hasChild = sSrc.fileIndex.some(function (c) {
-                    return c !== f && FAR.normPath(c.path).startsWith(prefix);
-                });
-                if (hasChild) stillHasChild.add(f._id);
-            }
-            sSrc.fileIndex = sSrc.fileIndex.filter(function (f) {
-                if (f.docType !== 'folder') return true;
-                // Папка удаляется, если она была в списке выделенных и не имеет детей
-                const wasSelected = removeSet.has(f._id);
-                if (wasSelected && !stillHasChild.has(f._id)) {
-                    changed = true;
-                    return false;
-                }
-                return true;
-            });
-        }
-
-        // Отдельно удаляем выбранные папки из БД-источника, если они ещё там
-        for (const sel of selected) {
-            if (!sel.item.isFolder) continue;
-            const folderId = sel.item._id;
-            if (!folderId) continue;
+        for (const fid of folderIdsToRemove) {
             try {
-                const doc = await sSrc.db.get(folderId);
+                const doc = await sSrc.db.get(fid);
                 await sSrc.db.remove(doc);
             } catch (e) {
                 // уже удалена — ок
@@ -275,8 +226,12 @@ FAR.transferBetweenSides = async function (mode) {
 
     FAR.finishProgress(err);
     FAR.progressLog('━━━ Готово: ' + ok + ', ошибок: ' + err, ok > 0 ? 'ok' : 'err');
-    FAR.renderPanel('left');
-    FAR.renderPanel('right');
+
+    // Перезагружаем обе панели (ленивая загрузка — надо перечитать
+    // директории, т.к. в БД могли появиться/исчезнуть документы)
+    await FAR.reloadPanel('left');
+    await FAR.reloadPanel('right');
+
     FAR.setStatus('✅ ' + actionLabel + ': ' + ok + ', ошибок: ' + err);
     FAR.toast(actionLabel + ' ' + ok + ' из ' + totalSteps, ok ? 'success' : 'error');
 };

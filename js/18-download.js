@@ -1,5 +1,18 @@
+// ============================================================
+// Скачивание выделенных файлов по отдельности (без сжатия).
+// ============================================================
+//
+// ЛЕНИВАЯ ЗАГРУЗКА: функция работает с выделенными элементами
+// напрямую — им не нужен обход дерева. Читаем тело из
+// конкретной стороны через FAR.readFileBodyFromSide.
+
 FAR.downloadSelectedUncompressed = async function() {
     if (!FAR.ensureDb()) return;
+
+    const side = FAR.activePanel;
+    const ctx = FAR.side[side];
+    if (!ctx || !ctx.db) { FAR.toast('Панель не подключена', 'warning'); return; }
+
     const selected = FAR.getSelectedItemsFromActivePanel();
     if (selected.length === 0) { FAR.toast('Ничего не выбрано', 'warning'); return; }
 
@@ -26,7 +39,7 @@ FAR.downloadSelectedUncompressed = async function() {
         FAR.updateProgress(i, filesOnly.length, item.name, err);
         FAR.progressLog(`📥 ${item.name}`, 'info');
         try {
-            const res = await FAR.readFileBody(item);
+            const res = await FAR.readFileBodyFromSide(side, item);
             const blob = new Blob([res.data], { type: res.contentType });
             FAR.saveBlobAs(blob, FAR.sanitizeFileName(item.name));
             ok++;

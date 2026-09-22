@@ -1,15 +1,17 @@
 // ============================================================
 // Точка входа: загрузка модалок, инициализация, автоподключение
 // ============================================================
-// Поддерживает мульти-БД (модуль 35-multi-db.js):
+// Поддерживает мульти-БД (модули 35a–35d):
 //   • при старте подключает ОБЕ панели к одной БД;
 //   • при клике по шапке панели можно сменить БД только для неё;
 //   • данные подключения каждой панели хранятся отдельно.
+//
+// ЛЕНИВАЯ ЗАГРУЗКА:
+//   loadFilesForSide грузит только текущую директорию панели,
+//   а не всю БД. При первом подключении грузим корень обеих
+//   панелей.
 // ============================================================
 
-// ============================================================
-// Загрузка модальных окон из modals/*.html
-// ============================================================
 FAR.loadModalFragment = function(path) {
     try {
         const xhr = new XMLHttpRequest();
@@ -55,9 +57,6 @@ FAR.injectModals = function() {
 document.addEventListener('DOMContentLoaded', async function() {
     FAR.injectModals();
 
-    // --- Мульти-БД: переключатели БД в шапках панелей ---
-    // (модуль 35-multi-db.js уже загружен к этому моменту,
-    //  т.к. подключён в index.html до 23-main.js)
     if (typeof FAR.setupPanelDbSwitcher === 'function') {
         FAR.setupPanelDbSwitcher();
     }
@@ -79,19 +78,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     FAR.setupGamepadAuto();
     FAR.setupPanelContextMenu();
 
-    // Устанавливаем обёртку Pannellum для загрузки из PouchDB
     FAR._installPannellumDbWrapper();
 
     // ============================================================
     // Автоподключение
     // ============================================================
-    // Приоритет источников для «обеих панелей»:
-    //   1) глобальный LS (filebd_conn) — как было раньше;
-    //   2) LS левой панели (filebd_conn_left);
-    //   3) LS правой панели (filebd_conn_right).
-    // Если ничего нет — открываем модалку обязательного подключения.
-    // ============================================================
-
     const savedGlobal = FAR.loadConnFromLS();
     const savedLeft   = (typeof FAR.loadSideConnFromLS === 'function')
                         ? FAR.loadSideConnFromLS('left')  : null;
@@ -106,19 +97,19 @@ document.addEventListener('DOMContentLoaded', async function() {
         try {
             const res = await FAR.connectToDb(saved);
 
-            // Ставим подключение ОБЕИМ панелям
             FAR.applyConnectionToBoth(saved, res.db, res.fullUrl);
 
             FAR.hideLoading();
             FAR.updateAuthUI();
-            FAR.setStatus(`✅ Подключено: ${res.fullUrl} (документов: ${res.info.doc_count || 0})`);
+            FAR.setStatus(`✅ Подключено: ${res.fullUrl}`);
             FAR.toast('Подключение восстановлено', 'success');
 
-            await FAR.loadFilesForSide('left');
-            await FAR.loadFilesForSide('right');
+            // Ленивая загрузка: грузим только корень обеих панелей.
+            await FAR.loadFilesForSide('left',  { path: '/', silent: true });
+            await FAR.loadFilesForSide('right', { path: '/', silent: true });
 
-            FAR.renderPanel('left');
-            FAR.renderPanel('right');
+            FAR.renderPanel('left',  { skipLoad: true });
+            FAR.renderPanel('right', { skipLoad: true });
 
             FAR.restoreUiState();
 

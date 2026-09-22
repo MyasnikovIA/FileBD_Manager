@@ -1,3 +1,10 @@
+// ============================================================
+// Модалка подключения к БД (глобально или для одной панели).
+// ============================================================
+//
+// ЛЕНИВАЯ ЗАГРУЗКА: после успешного подключения грузим только
+// корень нужной панели/обеих панелей.
+
 FAR.connModalSide = null;
 
 FAR.openConnModal = function (required, side) {
@@ -6,7 +13,6 @@ FAR.openConnModal = function (required, side) {
 
     const modal = document.getElementById('connModal');
 
-    // Данные по умолчанию — из контекста стороны, LS стороны, глобального LS или дефолт
     const def = FAR.getConnDefaultsForSide(FAR.connModalSide);
 
     document.getElementById('connUrl').value  = def.url  || '';
@@ -19,7 +25,6 @@ FAR.openConnModal = function (required, side) {
     document.getElementById('connCloseBtn').style.display  = required ? 'none' : '';
     document.getElementById('connCancelBtn').style.display = required ? 'none' : '';
 
-    // Заголовок и цель
     const titleEl = document.getElementById('connTitle');
     const tgtEl = document.getElementById('connTarget');
     const tgtNameEl = document.getElementById('connTargetName');
@@ -77,11 +82,16 @@ FAR.submitConnModal = async function () {
         FAR.setStatus('✅ Подключено: ' + res.fullUrl);
         FAR.toast('Подключение установлено', 'success');
 
-        await FAR.loadFilesForSide('left');
-        await FAR.loadFilesForSide('right');
-
-        FAR.renderPanel('left');
-        FAR.renderPanel('right');
+        // Ленивая загрузка: только корень нужных панелей.
+        if (FAR.connModalSide) {
+            await FAR.loadFilesForSide(FAR.connModalSide, { path: '/', silent: true });
+            FAR.renderPanel(FAR.connModalSide, { skipLoad: true });
+        } else {
+            await FAR.loadFilesForSide('left',  { path: '/', silent: true });
+            await FAR.loadFilesForSide('right', { path: '/', silent: true });
+            FAR.renderPanel('left',  { skipLoad: true });
+            FAR.renderPanel('right', { skipLoad: true });
+        }
         FAR.updateConnIndicators();
     } catch (e) {
         console.error('connect error:', e);

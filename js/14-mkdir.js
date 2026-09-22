@@ -1,23 +1,29 @@
+// ============================================================
+// Создание папки в текущей директории активной панели.
+// ============================================================
+
 FAR.createFolder = async function() {
     if (!FAR.ensureDb()) return;
+
+    const side = FAR.activePanel;
+    const ctx = FAR.side[side];
+    if (!ctx || !ctx.db) { FAR.toast('Панель не подключена', 'warning'); return; }
+
     const name = prompt('Имя папки:');
     if (!name || !name.trim()) return;
     const folderName = name.trim();
-    const basePath = FAR.normPath(FAR.activePanel === 'left' ? FAR.leftPath : FAR.rightPath);
+
+    const basePath = FAR.normPath(ctx.path);
     const folderPath = FAR.normPath(basePath === '' ? folderName : basePath + '/' + folderName);
     const docId = 'd:' + encodeURIComponent(folderPath);
+
     try {
-        await FAR.db.put({
+        await ctx.db.put({
             _id: docId, type: 'folder', path: folderPath,
             name: folderName, mtime: Date.now()
         });
-        FAR.fileIndex.push({
-            _id: docId, path: folderPath, size: 0, mtime: Date.now(),
-            binary: false, children: [], docType: 'folder'
-        });
         FAR.toast(`Папка "${folderName}" создана`, 'success');
-        FAR.renderPanel('left');
-        FAR.renderPanel('right');
+        await FAR.reloadPanel(side);
     } catch (e) {
         if (e.status === 409) FAR.toast('Папка уже существует', 'warning');
         else FAR.toast('Ошибка: ' + e.message, 'error');

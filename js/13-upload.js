@@ -1,6 +1,18 @@
+// ============================================================
+// Загрузка файлов и папок в текущую директорию панели.
+// ============================================================
+//
+// ЛЕНИВАЯ ЗАГРУЗКА: после операции перечитываем директорию
+// через FAR.reloadPanel(side), а не перерисовываем из
+// глобального fileIndex.
+
 FAR.uploadFilesToPath = async function(files, targetPath) {
     if (!FAR.ensureDb()) return { ok: 0, err: 0 };
     if (!files.length) return { ok: 0, err: 0 };
+
+    const side = FAR.activePanel;
+    const ctx = FAR.side[side];
+    if (!ctx || !ctx.db) { FAR.toast('Панель не подключена', 'warning'); return { ok: 0, err: 0 }; }
 
     const baseTarget = FAR.normPath(targetPath);
     const targetName = baseTarget === '' ? 'корень' : baseTarget;
@@ -34,21 +46,13 @@ FAR.uploadFilesToPath = async function(files, targetPath) {
         const folderName = relFolder.split('/').pop();
         FAR.updateProgress(step - 1, totalSteps, `📁 ${fullPath}`, err);
 
-        if (FAR.fileIndex.find(f => f._id === docId)) {
-            FAR.progressLog(`⏭ ${fullPath} — уже существует`, 'warn');
-            continue;
-        }
         try {
             let rev = null;
-            try { const existing = await FAR.db.get(docId); rev = existing._rev; }
+            try { const existing = await ctx.db.get(docId); rev = existing._rev; }
             catch (e) { if (e.status !== 404) throw e; }
             const doc = { _id: docId, type: 'folder', path: fullPath, name: folderName, mtime: Date.now() };
             if (rev) doc._rev = rev;
-            await FAR.db.put(doc);
-            FAR.fileIndex.push({
-                _id: docId, path: fullPath, size: 0, mtime: doc.mtime,
-                binary: false, children: [], docType: 'folder'
-            });
+            await ctx.db.put(doc);
             FAR.progressLog(`📁 ✅ ${fullPath}`, 'ok');
         } catch (e) {
             err++;
@@ -75,7 +79,7 @@ FAR.uploadFilesToPath = async function(files, targetPath) {
             const docId = 'f:' + encodeURIComponent(cleanPath);
 
             let rev = null;
-            try { const existing = await FAR.db.get(docId); rev = existing._rev; }
+            try { const existing = await ctx.db.get(docId); rev = existing._rev; }
             catch (e) { if (e.status !== 404) throw e; }
 
             const doc = {
@@ -84,23 +88,10 @@ FAR.uploadFilesToPath = async function(files, targetPath) {
                 binary: !contentType.startsWith('text'), contentType
             };
             if (rev) doc._rev = rev;
-            await FAR.db.put(doc);
-            const fresh = await FAR.db.get(docId);
-            await FAR.db.putAttachment(docId, 'b', fresh._rev, f.blob, contentType);
+            await ctx.db.put(doc);
+            const fresh = await ctx.db.get(docId);
+            await ctx.db.putAttachment(docId, 'b', fresh._rev, f.blob, contentType);
 
-            const existing = FAR.fileIndex.find(x => x._id === docId);
-            if (existing) {
-                existing.size = data.length;
-                existing.mtime = doc.mtime;
-                existing.contentType = contentType;
-                existing.path = cleanPath;
-            } else {
-                FAR.fileIndex.push({
-                    _id: docId, path: cleanPath, size: data.length,
-                    mtime: doc.mtime, binary: doc.binary, children: [],
-                    contentType: contentType, docType: 'file'
-                });
-            }
             ok++;
             FAR.progressLog(`✅ ${cleanPath}`, 'ok');
         } catch (e) {
@@ -113,8 +104,7 @@ FAR.uploadFilesToPath = async function(files, targetPath) {
     FAR.finishProgress(err);
     FAR.progressLog(`━━━ Готово: ${ok} файлов, ${foldersToCreate.size} папок, ${err} ошибок`, ok > 0 ? 'ok' : 'err');
 
-    FAR.renderPanel('left');
-    FAR.renderPanel('right');
+    await FAR.reloadPanel(side);
     FAR.setStatus(`✅ Загружено: ${ok} файлов, ${err} ошибок`);
     FAR.toast(`Загружено ${ok} файлов, ${err} ошибок`, ok ? 'success' : 'error');
     return { ok, err };
@@ -128,7 +118,9 @@ FAR.uploadFile = function() {
     input.onchange = async function(e) {
         const files = Array.from(e.target.files);
         if (!files.length) return;
-        const targetPath = FAR.activePanel === 'left' ? FAR.leftPath : FAR.rightPath;
+        const side = FAR.activePanel;
+        const ctx = FAR.side[side];
+        const targetPath = ctx ? ctx.path : '/';
         const converted = files.map(function(f) {
             return {
                 name: f.name, blob: f,

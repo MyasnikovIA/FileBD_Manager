@@ -193,11 +193,12 @@ FAR.peClearPreview = function() {
 // ============================================================
 
 FAR.peBrowseDb = function() {
+    const side = FAR._panoCurrentSide || FAR.activePanel;
     FAR.openDbPicker(function(path) {
         requestAnimationFrame(function() {
             FAR.peLoadPreview();
         });
-    });
+    }, side);
 };
 
 // ============================================================

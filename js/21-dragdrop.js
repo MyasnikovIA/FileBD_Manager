@@ -1,7 +1,16 @@
+// ============================================================
+// Drag&drop файлов/папок из Проводника в панель.
+// ============================================================
+//
+// ЛЕНИВАЯ ЗАГРУЗКА: после загрузки панель перечитывает свою
+// директорию через FAR.reloadPanel.
+
 FAR._dragCounter = 0;
 
 FAR.getDropTargetPath = function(panelId) {
-    return panelId === 'panelLeft' ? FAR.leftPath : FAR.rightPath;
+    const side = panelId === 'panelLeft' ? 'left' : 'right';
+    const ctx = FAR.side[side];
+    return ctx ? ctx.path : '/';
 };
 
 FAR.setupPanelDragDrop = function(panelId) {

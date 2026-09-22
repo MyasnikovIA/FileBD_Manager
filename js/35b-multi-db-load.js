@@ -1,145 +1,84 @@
 // ============================================================
-// Мульти-БД: загрузка данных для конкретной стороны —
-// индекс файлов (loadFilesForSide), чтение тела файла
-// (readFileBodyFromSide), список файлов в пути
-// (listFilesInPathForSide + обратная совместимость).
+// Мульти-БД: ленивая загрузка директории для конкретной стороны,
+// чтение тела файла, список файлов в пути.
 // ============================================================
 //
-// Модуль подключается ПОСЛЕ 35a-multi-db-core.js, т.к.
-// использует FAR.side[side] / FAR.decryptString / FAR.normPath.
+// Модуль подключается ПОСЛЕ 35a-multi-db-core.js, т.к. использует
+// FAR.side[side] / FAR.decryptString / FAR.normPath.
+//
+// ВАЖНО: раньше loadFilesForSide() тянул ВСЮ базу в s.fileIndex.
+// Теперь это ленивая функция: подгружает ТОЛЬКО содержимое
+// одной директории (по allDocs с startkey/endkey).
 
 // ============================================================
-// 1. Загрузка индекса для конкретной стороны
+// 1. Ленивая загрузка директории стороны
 // ============================================================
+//
+// Загружает только непосредственных детей пути `path` в
+// s.fileIndex (заменяя его). Для этого используется
+// FAR.listDirFromSide(side, path) из 06-files.js.
+//
+// ВАЖНО: сигнатура сохранена (side, opts), чтобы не ломать
+// существующие вызовы в 23-main.js / 10-connection-modal.js.
+// Второй аргумент opts теперь может содержать { path, silent }.
 
-/**
- * Аналог FAR.loadFiles(), но работает с БД конкретной стороны
- * и пишет в fileIndex стороны. Не трогает UI — вызывающий сам решает,
- * что перерисовывать.
- */
 FAR.loadFilesForSide = async function (side, opts) {
     opts = opts || {};
     const s = FAR.side[side];
-    if (!s || !s.db) return;
+    if (!s || !s.db) return [];
+
+    const path = (opts.path !== undefined) ? opts.path : s.path;
+    const norm = FAR.normPath(path);
 
     s.loading = true;
+    if (!opts.silent) {
+        FAR.setStatus('📥 Загрузка /' + norm + ' (' + side + ')…');
+    }
 
     try {
-        const all = await s.db.allDocs({ include_docs: true, limit: 50000 });
-        const allDocs = all.rows.map(function (r) { return r.doc; }).filter(Boolean);
-
-        const fileIndex = [];
-        const fileVersions = {};
-        let processed = 0;
-
-        for (const doc of allDocs) {
-            if (!doc || !doc._id) continue;
-            if (doc._id.startsWith('_design/')) continue;
-            if (doc._id.startsWith('_local/')) continue;
-
-            processed++;
-            if (!opts.silent) {
-                FAR.updateLoadingSub(side + ': ' + processed + ' / ' + allDocs.length);
-            }
-
-            if (doc.type === 'chunk') continue;
-
-            if (doc.type === 'folder') {
-                fileIndex.push({
-                    _id: doc._id,
-                    path: FAR.normPath(doc.path || doc.name || doc._id.substring(2)),
-                    size: 0, mtime: doc.mtime || 0, binary: false,
-                    children: [], docType: 'folder'
-                });
-                continue;
-            }
-
-            if (doc.type === 'file') {
-                if (doc.path && typeof doc.path === 'string' && doc.path.length > 0) {
-                    fileIndex.push({
-                        _id: doc._id, path: FAR.normPath(doc.path),
-                        size: doc.size || 0, mtime: doc.mtime || 0,
-                        binary: doc.binary || false,
-                        children: doc.children || [],
-                        contentType: doc.contentType || '',
-                        docType: 'file'
-                    });
-                    continue;
-                }
-
-                let resolvedPath = null, metaObj = null;
-                if (doc.meta && typeof doc.meta === 'string') {
-                    try {
-                        const plain = await FAR.decryptString(doc.meta);
-                        try { metaObj = JSON.parse(plain); } catch (e) {}
-                        if (metaObj && metaObj.path) resolvedPath = metaObj.path;
-                        else if (typeof plain === 'string' && plain.includes('/')) resolvedPath = plain;
-                    } catch (e) {}
-                }
-
-                if (resolvedPath) {
-                    fileIndex.push({
-                        _id: doc._id, path: FAR.normPath(resolvedPath),
-                        size: (metaObj && metaObj.size) || doc.size || 0,
-                        mtime: (metaObj && metaObj.mtime) || doc.mtime || 0,
-                        binary: (metaObj && metaObj.binary) || doc.binary || false,
-                        children: (metaObj && metaObj.children) || doc.children || [],
-                        contentType: doc.contentType || '',
-                        docType: 'file'
-                    });
-                } else {
-                    const hash = doc._id.startsWith('f:') ? doc._id.substring(2) : doc._id;
-                    fileIndex.push({
-                        _id: doc._id,
-                        path: '[file] ' + hash.substring(0, 20) + '…',
-                        size: doc.size || 0, mtime: doc.mtime || 0,
-                        binary: false, children: doc.children || [],
-                        contentType: doc.contentType || '',
-                        docType: 'file', _unresolved: true, _hash: hash
-                    });
-                }
-                continue;
-            }
-
-            if (doc.type === 'version') {
-                const parts = doc._id.substring(2).split('\n');
-                const hash = parts[0];
-                const ts = parseInt(parts[1], 10) || 0;
-                if (!fileVersions[hash] || fileVersions[hash].ts < ts) {
-                    fileVersions[hash] = { ts: ts, doc: doc };
-                }
-            }
-        }
-
-        // Второй проход — расшифровка _unresolved
-        for (const item of fileIndex) {
-            if (!item._unresolved) continue;
-            const ver = fileVersions[item._hash];
-            if (!ver) continue;
-            try {
-                const plain = await FAR.decryptString(ver.doc.meta);
-                let metaObj = null;
-                try { metaObj = JSON.parse(plain); } catch (e) {}
-                if (metaObj && metaObj.path) {
-                    item.path = FAR.normPath(metaObj.path);
-                    item.size = metaObj.size || item.size;
-                    item.mtime = metaObj.mtime || item.mtime;
-                    item.binary = metaObj.binary || item.binary;
-                    item.children = metaObj.children || item.children;
-                    delete item._unresolved;
-                    delete item._hash;
-                }
-            } catch (e) {}
-        }
-
-        s.fileIndex = fileIndex;
+        const items = await FAR.listDirFromSide(side, norm, { includeDocs: true });
+        s.fileIndex = items;
+        s.path = '/' + norm;
         s.loading = false;
-
-        return fileIndex;
+        return items;
     } catch (e) {
         s.loading = false;
+        console.error('loadFilesForSide(' + side + '):', e);
         throw e;
     }
+};
+
+/**
+ * Загружает директорию стороны, если путь изменился или кэш пуст.
+ * Возвращает true, если что-то грузили.
+ */
+FAR.ensureDirLoaded = async function (side, path, opts) {
+    opts = opts || {};
+    const s = FAR.side[side];
+    if (!s || !s.db) return false;
+
+    const norm = FAR.normPath(path);
+    const cur  = FAR.normPath(s.path);
+
+    if (!opts.force && norm === cur && s.fileIndex && s.fileIndex.length >= 0 && s._loadedDir === norm) {
+        return false;
+    }
+
+    await FAR.loadFilesForSide(side, { path: norm, silent: opts.silent });
+    s._loadedDir = norm;
+    return true;
+};
+
+/**
+ * Полная перезагрузка панели: подтянуть директорию, отрисовать,
+ * обновить статус/кнопки.
+ */
+FAR.reloadPanel = async function (side) {
+    const s = FAR.side[side];
+    if (!s || !s.db) return;
+
+    await FAR.ensureDirLoaded(side, s.path, { force: true });
+    FAR.renderPanel(side);
 };
 
 // ============================================================
@@ -200,8 +139,12 @@ FAR.readFileBodyFromSide = async function (side, item) {
 // ============================================================
 // 3. Список файлов в пути для конкретной стороны
 // ============================================================
-// Полный аналог старого FAR.listFilesInPath, но работает с
-// fileIndex конкретной панели (FAR.side[side].fileIndex).
+//
+// Синхронная функция: возвращает детей пути из УЖЕ ЗАГРУЖЕННОГО
+// s.fileIndex. НЕ ходит в БД. Если s.fileIndex пуст — вернёт [].
+//
+// Правильный async-вариант: FAR.loadFilesForSide(side, {path}) +
+// FAR.listFilesInPathForSide(side, path).
 
 FAR.listFilesInPathForSide = function (side, path) {
     const ctx = FAR.side[side];
@@ -258,10 +201,8 @@ FAR.listFilesInPathForSide = function (side, path) {
 };
 
 // ============================================================
-// 4. Обратная совместимость: старый FAR.listFilesInPath
+// 4. Обратная совместимость
 // ============================================================
-// Оставляем возможность вызывать старую функцию — она теперь
-// работает с индексом активной панели.
 
 FAR.listFilesInPath = function (path) {
     return FAR.listFilesInPathForSide(FAR.activePanel, path);

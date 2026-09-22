@@ -1,24 +1,50 @@
-FAR.downloadSelectedAsZip = async function() {
+// ============================================================
+// Скачивание выделенного одним ZIP-архивом.
+// ============================================================
+//
+// ЛЕНИВАЯ ЗАГРУЗКА:
+//   Для папок содержимое берётся рекурсивным обходом
+//   FAR.listRecursiveFromSide(side, folderPath), а не из
+//   глобального fileIndex.
+
+FAR.downloadSelectedAsZip = async function () {
     if (!FAR.ensureDb()) return;
+
+    const side = FAR.activePanel;
+    const ctx = FAR.side[side];
+    if (!ctx || !ctx.db) { FAR.toast('Панель не подключена', 'warning'); return; }
+
     const selected = FAR.getSelectedItemsFromActivePanel();
     if (selected.length === 0) { FAR.toast('Ничего не выбрано', 'warning'); return; }
 
+    // ============================================================
+    // 1. Собираем список файлов для архива
+    // ============================================================
     const toZip = [];
+
     for (const sel of selected) {
         const item = sel.item;
+
         if (item.isFolder) {
-            const prefix = item.path + '/';
-            const children = FAR.fileIndex.filter(f =>
-                f.docType === 'file' && f.path.startsWith(prefix)
-            );
-            const folderName = FAR.sanitizeFileName(item.name || item.path.split('/').pop());
-            for (const child of children) {
-                const relPath = child.path.substring(prefix.length);
-                const zipPath = folderName + '/' + relPath.split('/').map(FAR.sanitizeFileName).join('/');
-                toZip.push({ zipPath, item: child });
+            const srcFolderPath = FAR.normPath(item.path);
+            const folderName = FAR.sanitizeFileName(item.name || srcFolderPath.split('/').pop());
+
+            try {
+                const children = await FAR.listRecursiveFromSide(side, srcFolderPath);
+                const prefix = srcFolderPath + '/';
+                for (const c of children) {
+                    if (c.isFolder || c.docType === 'folder') continue;
+                    const rel = FAR.normPath(c.path).substring(prefix.length);
+                    if (!rel) continue;
+                    const zipPath = folderName + '/' +
+                        rel.split('/').map(FAR.sanitizeFileName).join('/');
+                    toZip.push({ zipPath: zipPath, item: c });
+                }
+            } catch (e) {
+                FAR.toast('Ошибка обхода ' + item.path + ': ' + e.message, 'error');
             }
         } else {
-            toZip.push({ zipPath: FAR.sanitizeFileName(item.name), item });
+            toZip.push({ zipPath: FAR.sanitizeFileName(item.name), item: item });
         }
     }
 
@@ -28,7 +54,7 @@ FAR.downloadSelectedAsZip = async function() {
         ? FAR.sanitizeFileName(selected[0].item.name) + '.zip'
         : 'files.zip';
 
-    FAR.startProgress('🗜️', `Упаковка ${toZip.length} файлов в ${zipName}`, toZip.length, function() {});
+    FAR.startProgress('🗜️', `Упаковка ${toZip.length} файлов в ${zipName}`, toZip.length, function () {});
 
     let ok = 0, err = 0;
     const zip = new JSZip();
@@ -40,7 +66,7 @@ FAR.downloadSelectedAsZip = async function() {
         FAR.updateProgress(i, toZip.length, zipPath, err);
         FAR.progressLog(`🗜️ + ${zipPath}`, 'info');
         try {
-            const res = await FAR.readFileBody(item);
+            const res = await FAR.readFileBodyFromSide(side, item);
             zip.file(zipPath, res.data, {
                 binary: true,
                 compression: 'DEFLATE',
@@ -68,11 +94,7 @@ FAR.downloadSelectedAsZip = async function() {
 
     try {
         const blob = await zip.generateAsync(
-            {
-                type: 'blob',
-                compression: 'DEFLATE',
-                compressionOptions: { level: 6 }
-            },
+            { type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } },
             function(metadata) {
                 const pct = Math.round(metadata.percent);
                 document.getElementById('progressPercent').textContent = pct + '%';
