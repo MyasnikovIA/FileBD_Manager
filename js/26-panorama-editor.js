@@ -554,18 +554,29 @@ FAR._panoReloadWithHotspots = async function(item, hotspots) {
         FAR._panoCurrentUrl = url;
 
         const pannellumHotspots = hotspots.map(function(hs) {
+            let type = hs.type;
+            if (typeof type !== 'string' || !type) type = 'scene';
             return {
-                pitch: hs.pitch || 0,
-                yaw: hs.yaw || 0,
-                type: hs.type || 'scene',
+                pitch: Number(hs.pitch) || 0,
+                yaw: Number(hs.yaw) || 0,
+                type: type,
                 text: hs.text || hs.name || 'Переход',
                 source: hs.source || 'url',
                 dbPath: hs.dbPath || '',
                 panorama_url: hs.panorama_url || '',
-                point_pitch: hs.targetPitch || 0,
-                point_yaw: hs.targetYaw || 0,
+                point_pitch: Number(hs.targetPitch) || 0,
+                point_yaw: Number(hs.targetYaw) || 0,
                 id: hs.id
             };
+        }).filter(function(hs) {
+            // Отбрасываем scene без источника
+            if (hs.type === 'scene' &&
+                (!hs.panorama_url || !String(hs.panorama_url).trim()) &&
+                !(hs.source === 'db' && hs.dbPath)) {
+                console.warn('[panoReload] отбрасываю scene без источника:', hs);
+                return false;
+            }
+            return true;
         });
 
         const config = {

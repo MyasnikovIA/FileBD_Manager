@@ -8,6 +8,10 @@ FAR._panoCurrentUrl = null;
 FAR._panoBlobUrls = [];
 FAR._panoCurrentHotspots = [];
 
+// Флаг: идёт переход на другую сцену. Защищает от двойного клика
+// (Pannellum навешивает свой onclick, наш перехватчик — тоже свой).
+FAR._panoNavigating = false;
+
 FAR.PANO_ASPECT_MIN = 1.9;
 FAR.PANO_ASPECT_MAX = 2.1;
 
@@ -104,13 +108,13 @@ FAR._findPanoramaJson = async function(item, side) {
 
     return null;
 };
+
 /**
  * Преобразует JSON с хотспотами FileBD в формат Pannellum.
  *
  * ВАЖНО: Pannellum падает, если у хотспота type='scene', но нет
  * panorama_url (или он пустой). Поэтому «битые» хотспоты мы
- * отбрасываем здесь — это надёжнее, чем ловить их потом в
- * Pannellum-обёртке.
+ * отбрасываем здесь.
  */
 FAR._jsonToPannellumHotspots = function(jsonData, basePath, fallbackImageUrl) {
     const result = [];
@@ -119,9 +123,13 @@ FAR._jsonToPannellumHotspots = function(jsonData, basePath, fallbackImageUrl) {
     jsonData.hotSpots.forEach(function(hs) {
         if (!hs) return;
 
-        // --- Определяем, куда ведёт хотспот ---
         const src = hs.source || (hs.dbPath ? 'db' : 'url');
-        const type = hs.type || 'scene';
+
+        // Pannellum вызывает .startsWith на type.
+        let type = hs.type;
+        if (typeof type !== 'string' || !type) {
+            type = 'scene';
+        }
 
         let relUrl = hs.panorama_url || '';
         let fullUrl = relUrl;
@@ -132,29 +140,26 @@ FAR._jsonToPannellumHotspots = function(jsonData, basePath, fallbackImageUrl) {
             fullUrl = cleanBase ? cleanBase + '/' + cleanRel : cleanRel;
         }
 
-        // --- Валидация: scene без источника — отбрасываем ---
         if (type === 'scene') {
             const hasUrl = !!(fullUrl && String(fullUrl).trim());
             const hasDb  = !!(src === 'db' && hs.dbPath && String(hs.dbPath).trim());
             if (!hasUrl && !hasDb) {
-                console.warn(
-                    '[_jsonToPannellumHotspots] отбрасываю хотспот без источника:',
-                    hs.name || hs.text || hs.id
-                );
+                console.warn('[_jsonToPannellumHotspots] отбрасываю scene без источника:',
+                    hs.name || hs.text || hs.id);
                 return;
             }
         }
 
         result.push({
-            pitch: hs.pitch || 0,
-            yaw: hs.yaw || 0,
+            pitch: Number(hs.pitch) || 0,
+            yaw: Number(hs.yaw) || 0,
             type: type,
             text: hs.text || hs.name || 'Переход',
             panorama_url: fullUrl,
             relativePath: relUrl,
-            point_pitch: hs.targetPitch || 0,
-            point_yaw: hs.targetYaw || 0,
-            targetHfov: hs.targetHfov || 100,
+            point_pitch: Number(hs.targetPitch) || 0,
+            point_yaw: Number(hs.targetYaw) || 0,
+            targetHfov: Number(hs.targetHfov) || 100,
             source: src,
             dbPath: hs.dbPath || '',
             id: hs.id
@@ -162,6 +167,38 @@ FAR._jsonToPannellumHotspots = function(jsonData, basePath, fallbackImageUrl) {
     });
 
     return result;
+};
+
+/**
+ * Хелпер: собрать config для Pannellum viewer.
+ *
+ * ВАЖНО:
+ *   • НЕ передаём onClickHotSpot — Pannellum сам навесит обработчик,
+ *     который вызовет наш _onPanoramaHotspotClick. Это приводит к
+ *     двойному вызову и race condition. Перехват делаем только через
+ *     FAR._panoAttachHotspotInterceptors.
+ *   • crossOrigin не задаём — panorama это Blob URL.
+ */
+FAR._buildPannellumConfig = function(opts) {
+    return {
+        type: 'equirectangular',
+        panorama: opts.panorama,
+        autoLoad: true,
+        autoRotate: false,
+        showControls: true,
+        showFullscreenCtrl: true,
+        showZoomCtrl: true,
+        mouseZoom: true,
+        keyboardZoom: true,
+        doubleClickZoom: false,
+        compass: false,
+        hfov: Number(opts.hfov) || 100,
+        pitch: Number(opts.pitch) || 0,
+        yaw: Number(opts.yaw) || 0,
+        hotSpots: Array.isArray(opts.hotSpots) ? opts.hotSpots : []
+        // onClickHotSpot НЕ передаём — см. комментарий выше
+        // crossOrigin НЕ передаём — panorama это Blob URL
+    };
 };
 
 /**
@@ -233,29 +270,12 @@ FAR.openPanoramaViewer = async function(item, side) {
             ? jsonData.yawCam
             : 0;
 
-        const config = {
-            type: 'equirectangular',
+        const config = FAR._buildPannellumConfig({
             panorama: url,
-            crossOrigin: 'anonymous',
-            autoLoad: true,
-            autoRotate: false,
-            showControls: true,
-            showFullscreenCtrl: true,
-            showZoomCtrl: true,
-            mouseZoom: true,
-            keyboardZoom: true,
-            doubleClickZoom: false,
-            compass: false,
-            hfov: 100,
             pitch: initialPitch,
             yaw: initialYaw,
-            hotSpots: hotspots,
-            hotSpotDebug: false,
-            onClickHotSpot: function(hs) {
-                FAR._onPanoramaHotspotClick(hs);
-                return true;
-            }
-        };
+            hotSpots: hotspots
+        });
 
         FAR._panoViewer = window.pannellum.viewer('panoramaCanvas', config);
 
@@ -282,9 +302,20 @@ FAR.openPanoramaViewer = async function(item, side) {
 
 /**
  * Клик по хотспоту — переход на новую сцену.
+ *
+ * ВАЖНО: единственная точка входа — наш перехватчик
+ * FAR._panoAttachHotspotInterceptors. Pannellum своего
+ * onClickHotSpot НЕ получает (мы его не передаём в config).
  */
 FAR._onPanoramaHotspotClick = async function(hs) {
     if (!hs) return;
+
+    // Защита от двойного клика
+    if (FAR._panoNavigating) {
+        console.log('[pano] переход уже выполняется, пропускаю повторный клик');
+        return;
+    }
+    FAR._panoNavigating = true;
 
     const side = FAR._panoCurrentSide || FAR.activePanel;
 
@@ -292,13 +323,17 @@ FAR._onPanoramaHotspotClick = async function(hs) {
     const loadingText = document.getElementById('panoramaLoadingText');
     loading.classList.remove('hidden');
 
-    // === ВАРИАНТ 1: источник — PouchDB ===
-    if (hs.source === 'db' && hs.dbPath) {
-        loadingText.textContent = 'Загрузка из БД: ' + hs.dbPath;
+    try {
+        // ============================================================
+        // ВАРИАНТ 1: источник — PouchDB
+        // ============================================================
+        if (hs.source === 'db' && hs.dbPath) {
+            loadingText.textContent = 'Загрузка из БД: ' + hs.dbPath;
 
-        try {
-            const item = FAR._findDbImageByPath(hs.dbPath);
+            // ВАЖНО: await, иначе item = Promise!
+            const item = await FAR._findDbImageByPath(hs.dbPath, side);
             if (!item) throw new Error('Файл не найден: ' + hs.dbPath);
+
             if (typeof FAR._ensureItemName === 'function') {
                 FAR._ensureItemName(item);
             }
@@ -330,28 +365,12 @@ FAR._onPanoramaHotspotClick = async function(hs) {
             }
             document.getElementById('panoramaCanvas').innerHTML = '';
 
-            const config = {
-                type: 'equirectangular',
+            const config = FAR._buildPannellumConfig({
                 panorama: url,
-                crossOrigin: 'anonymous',
-                autoLoad: true,
-                autoRotate: false,
-                showControls: true,
-                showFullscreenCtrl: true,
-                showZoomCtrl: true,
-                mouseZoom: true,
-                keyboardZoom: true,
-                doubleClickZoom: false,
-                compass: false,
-                hfov: 100,
                 pitch: hs.point_pitch !== undefined ? hs.point_pitch : 0,
                 yaw: hs.point_yaw !== undefined ? hs.point_yaw : 0,
-                hotSpots: hotspots,
-                onClickHotSpot: function(hs2) {
-                    FAR._onPanoramaHotspotClick(hs2);
-                    return true;
-                }
-            };
+                hotSpots: hotspots
+            });
 
             FAR._panoViewer = window.pannellum.viewer('panoramaCanvas', config);
             FAR._panoViewer.on('load', function() {
@@ -368,32 +387,34 @@ FAR._onPanoramaHotspotClick = async function(hs) {
             });
 
             if (typeof FAR._selectFileInPanel === 'function') {
-                FAR._selectFileInPanel(item);
+                FAR._selectFileInPanel(item, side);
             }
 
             return;
-        } catch (e) {
-            console.error('DB hotspot click:', e);
+        }
+
+        // ============================================================
+        // ВАРИАНТ 2: URL (поиск файла в БД по panorama_url)
+        // ============================================================
+        if (!hs.panorama_url) {
             loading.classList.add('hidden');
-            FAR.toast('Переход не выполнен: ' + e.message, 'error');
+            FAR.toast('У хотспота не задан panorama_url', 'warning');
             return;
         }
-    }
 
-    // === ВАРИАНТ 2: URL (поиск файла в БД по panorama_url) ===
-    if (!hs.panorama_url) {
-        loading.classList.add('hidden');
-        FAR.toast('У хотспота не задан panorama_url', 'warning');
-        return;
-    }
+        loadingText.textContent = 'Переход: ' + hs.panorama_url;
 
-    loadingText.textContent = 'Переход: ' + hs.panorama_url;
-
-    try {
         const normTarget = FAR.normPath(hs.panorama_url);
+
+        // Ищем в текущем fileIndex
         let targetItem = FAR.fileIndex.find(f =>
             f.docType === 'file' && FAR.normPath(f.path) === normTarget
         );
+
+        // Если не нашли — читаем напрямую из БД стороны
+        if (!targetItem) {
+            targetItem = await FAR._findDbImageByPath(normTarget, side);
+        }
 
         if (!targetItem && FAR._panoCurrentItem) {
             const curPath = FAR.normPath(FAR._panoCurrentItem.path);
@@ -405,6 +426,9 @@ FAR._onPanoramaHotspotClick = async function(hs) {
             targetItem = FAR.fileIndex.find(f =>
                 f.docType === 'file' && FAR.normPath(f.path) === altPath
             );
+            if (!targetItem) {
+                targetItem = await FAR._findDbImageByPath(altPath, side);
+            }
         }
 
         if (!targetItem) {
@@ -441,28 +465,12 @@ FAR._onPanoramaHotspotClick = async function(hs) {
         }
         document.getElementById('panoramaCanvas').innerHTML = '';
 
-        const config = {
-            type: 'equirectangular',
+        const config = FAR._buildPannellumConfig({
             panorama: url,
-            crossOrigin: 'anonymous',
-            autoLoad: true,
-            autoRotate: false,
-            showControls: true,
-            showFullscreenCtrl: true,
-            showZoomCtrl: true,
-            mouseZoom: true,
-            keyboardZoom: true,
-            doubleClickZoom: false,
-            compass: false,
-            hfov: 100,
             pitch: hs.point_pitch !== undefined ? hs.point_pitch : 0,
             yaw: hs.point_yaw !== undefined ? hs.point_yaw : 0,
-            hotSpots: hotspots,
-            onClickHotSpot: function(hs2) {
-                FAR._onPanoramaHotspotClick(hs2);
-                return true;
-            }
-        };
+            hotSpots: hotspots
+        });
 
         FAR._panoViewer = window.pannellum.viewer('panoramaCanvas', config);
         FAR._panoViewer.on('load', function() {
@@ -479,13 +487,16 @@ FAR._onPanoramaHotspotClick = async function(hs) {
         });
 
         if (typeof FAR._selectFileInPanel === 'function') {
-            FAR._selectFileInPanel(targetItem);
+            FAR._selectFileInPanel(targetItem, side);
         }
 
     } catch (e) {
         console.error('hotspot click:', e);
         loading.classList.add('hidden');
         FAR.toast('Переход не выполнен: ' + e.message, 'error');
+    } finally {
+        // Снимаем защиту от двойного клика
+        FAR._panoNavigating = false;
     }
 };
 
@@ -515,11 +526,13 @@ FAR.closePanoramaViewer = function() {
     FAR._panoCurrentUrl = null;
     FAR._panoCurrentHotspots = [];
     FAR._panoCurrentSide = null;
+    FAR._panoNavigating = false;
 };
 
 FAR.closePanoramaViewerOutside = function(e) {
     if (e.target === e.currentTarget) FAR.closePanoramaViewer();
 };
+
 FAR.downloadCurrentPanorama = async function() {
     if (!FAR._panoCurrentItem) {
         FAR.toast('Нет активной панорамы', 'warning');
@@ -559,7 +572,8 @@ FAR._panoUpdateFooter = function() {
 };
 
 // ============================================================
-// Перехват кликов по хотспотам ДО встроенной обработки Pannellum
+// Перехват кликов по хотспотам.
+// Это ЕДИНСТВЕННЫЙ источник вызовов _onPanoramaHotspotClick.
 // ============================================================
 
 FAR._panoAttachHotspotInterceptors = function() {
@@ -600,6 +614,8 @@ FAR._panoAttachHotspotInterceptors = function() {
             return;
         }
 
+        // Захватываем событие в capture-фазе — ДО встроенного onclick
+        // Pannellum. Это единственный вызов _onPanoramaHotspotClick.
         div.addEventListener('click', function(e) {
             e.stopImmediatePropagation();
             e.preventDefault();
@@ -714,17 +730,6 @@ FAR._panoAttachDblClickHandler = function() {
 // Синхронизация активной панели файлового менеджера
 // ============================================================
 
-// ============================================================
-// Синхронизация активной панели файлового менеджера
-// ============================================================
-
-/**
- * Выделяет файл item в панели side, при необходимости переключает
- * панель на директорию файла, ставит курсор и прокручивает к нему.
- *
- * @param {Object} item     — элемент fileIndex (с полем path)
- * @param {string} [side]   — 'left' | 'right'; по умолчанию активная панель
- */
 FAR._selectFileInPanel = function(item, side) {
     if (!item || !item.path) return;
     if (typeof FAR._ensureItemName === 'function') {
@@ -742,7 +747,6 @@ FAR._selectFileInPanel = function(item, side) {
         ? targetPath.substring(0, targetPath.lastIndexOf('/'))
         : '';
 
-    // --- Вспомогательная: попытаться выделить файл в этой панели ---
     const trySelect = function(s) {
         const c = FAR.side[s];
         if (!c) return false;
@@ -769,10 +773,8 @@ FAR._selectFileInPanel = function(item, side) {
         return true;
     };
 
-    // 1. Пробуем выделить в целевой панели
     if (trySelect(side)) return;
 
-    // 2. Не получилось — переключаем панель на директорию файла
     const newPath = dir ? '/' + dir : '/';
     ctx.path = newPath;
     ctx.selectedIdx.clear();
@@ -781,7 +783,6 @@ FAR._selectFileInPanel = function(item, side) {
 
     FAR.renderPanel(side);
 
-    // 3. После перерисовки пробуем выделить снова
     const files = ctx.files || [];
     const idx = files.findIndex(function(f) {
         return FAR.normPath(f.path) === targetPath;

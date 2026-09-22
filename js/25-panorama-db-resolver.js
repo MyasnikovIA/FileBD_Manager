@@ -218,15 +218,61 @@ FAR._revokePannellumBlobUrls = function() {
 // тело из той же БД, из которой открыта панорама.
 
 FAR._installPannellumDbWrapper = function() {
-    if (!window.pannellum || window.pannellum._dbWrapped) return;
+    if (!window.pannellum || window.pannellum._dbWrapped) {
+        console.log('[pannellum-wrapper] уже установлена или pannellum нет');
+        return;
+    }
     const originalViewer = window.pannellum.viewer;
+    console.log('[pannellum-wrapper] УСТАНОВКА. originalViewer =', typeof originalViewer);
 
     window.pannellum.viewer = function(container, config) {
+        console.log('[pannellum-wrapper] viewer() вызван. container =', container,
+                    'config.type =', config && config.type,
+                    'config.panorama =', config && config.panorama,
+                    'config.crossOrigin =', config && config.crossOrigin);
+
         const prep = async function() {
             const cfg = JSON.parse(JSON.stringify(config));
             const side = FAR._panoCurrentSide || FAR.activePanel;
 
-            // --- Сцены ---
+            // ============================================================
+            // САНИТИЗАЦИЯ ХОТСПОТОВ
+            // ============================================================
+            const sanitizeHotspot = function(hs) {
+                if (!hs) return null;
+                let type = hs.type;
+                if (typeof type !== 'string' || !type) type = 'scene';
+                hs.type = type;
+                hs.pitch = Number(hs.pitch) || 0;
+                hs.yaw = Number(hs.yaw) || 0;
+                hs.point_pitch = Number(hs.point_pitch) || 0;
+                hs.point_yaw = Number(hs.point_yaw) || 0;
+                if (typeof hs.panorama_url !== 'string') {
+                    hs.panorama_url = '';
+                }
+                return hs;
+            };
+
+            // ============================================================
+            // КРИТИЧНО: убираем crossOrigin для Blob URL
+            // ============================================================
+            // Если panorama — Blob URL, crossOrigin='anonymous' ломает
+            // WebGL-текстуру в libpannellum.js.
+            const sanitizeCrossOrigin = function(obj) {
+                if (!obj) return;
+
+                const pano = obj.panorama;
+                const isBlobUrl = typeof pano === 'string' && pano.indexOf('blob:') === 0;
+
+                if (isBlobUrl) {
+                    console.log('[pannellum-wrapper] Убираю crossOrigin для Blob URL');
+                    delete obj.crossOrigin;
+                }
+            };
+
+            // ============================================================
+            // Сцены
+            // ============================================================
             if (cfg.scenes) {
                 for (const sceneId of Object.keys(cfg.scenes)) {
                     const sc = cfg.scenes[sceneId];
@@ -236,28 +282,29 @@ FAR._installPannellumDbWrapper = function() {
                         || (typeof sc.panorama === 'string' && sc.panorama.startsWith('db:'));
 
                     if (wantsDb) {
-                        const dbPath = sc.dbPath
-                            || (sc.panorama || '').replace(/^db:/, '');
+                        const dbPath = sc.dbPath || (sc.panorama || '').replace(/^db:/, '');
                         try {
                             sc.panorama = await FAR._loadDbImageAsBlobUrl(dbPath, side);
-                            sc.crossOrigin = 'anonymous';
+                            delete sc.crossOrigin;
                             delete sc.source;
                             delete sc.dbPath;
                         } catch (e) {
                             console.error('Не удалось загрузить панораму из БД:', dbPath, e);
                         }
+                    } else {
+                        sanitizeCrossOrigin(sc);
                     }
 
                     if (Array.isArray(sc.hotSpots)) {
                         const cleaned = [];
-                        for (const hs of sc.hotSpots) {
+                        for (const raw of sc.hotSpots) {
+                            const hs = sanitizeHotspot(raw);
                             if (!hs) continue;
 
                             if (hs.source === 'db' && hs.dbPath) {
                                 try {
                                     hs.panorama_url = await FAR._loadDbImageAsBlobUrl(hs.dbPath, side);
                                     hs._origDbPath = hs.dbPath;
-                                    hs.source = 'db';
                                 } catch (e) {
                                     console.error('Не удалось загрузить хотспот из БД:', hs.dbPath, e);
                                     continue;
@@ -277,7 +324,9 @@ FAR._installPannellumDbWrapper = function() {
                 }
             }
 
-            // --- Одиночная сцена ---
+            // ============================================================
+            // Одиночная сцена
+            // ============================================================
             if (!cfg.scenes && cfg.panorama) {
                 const wantsDb = cfg.source === 'db'
                     || (typeof cfg.panorama === 'string' && cfg.panorama.startsWith('db:'));
@@ -285,32 +334,32 @@ FAR._installPannellumDbWrapper = function() {
                     const dbPath = cfg.dbPath || cfg.panorama.replace(/^db:/, '');
                     try {
                         cfg.panorama = await FAR._loadDbImageAsBlobUrl(dbPath, side);
-                        cfg.crossOrigin = 'anonymous';
+                        delete cfg.crossOrigin;
                         delete cfg.source;
                         delete cfg.dbPath;
                     } catch (e) {
                         console.error('Не удалось загрузить панораму из БД:', dbPath, e);
                     }
+                } else {
+                    sanitizeCrossOrigin(cfg);
                 }
 
                 if (Array.isArray(cfg.hotSpots)) {
                     const cleaned = [];
-                    for (const hs of cfg.hotSpots) {
+                    for (const raw of cfg.hotSpots) {
+                        const hs = sanitizeHotspot(raw);
                         if (!hs) continue;
 
-                        // Если это scene из БД — подгружаем Blob URL
                         if (hs.source === 'db' && hs.dbPath) {
                             try {
                                 hs.panorama_url = await FAR._loadDbImageAsBlobUrl(hs.dbPath, side);
                                 hs._origDbPath = hs.dbPath;
                             } catch (e) {
                                 console.error('Не удалось загрузить хотспот из БД:', hs.dbPath, e);
-                                // Не удалось — выкидываем хотспот, чтобы Pannellum не упал
                                 continue;
                             }
                         }
 
-                        // Pannellum падает на scene без panorama_url
                         if (hs.type === 'scene' &&
                             (!hs.panorama_url || !String(hs.panorama_url).trim())) {
                             console.warn('[pannellum-wrapper] отбрасываю scene без panorama_url:', hs);
@@ -323,15 +372,27 @@ FAR._installPannellumDbWrapper = function() {
                 }
             }
 
-            return originalViewer(container, cfg);
+            // Финальная санитизация перед передачей в Pannellum
+            sanitizeCrossOrigin(cfg);
+
+            console.log('[pannellum-wrapper] cfg перед originalViewer:',
+                        JSON.stringify({
+                            type: cfg.type,
+                            panorama: cfg.panorama && cfg.panorama.substring(0, 60),
+                            crossOrigin: cfg.crossOrigin,   // должно быть undefined
+                            hotSpotsCount: cfg.hotSpots && cfg.hotSpots.length
+                        }));
+
+            try {
+                return originalViewer(container, cfg);
+            } catch (e) {
+                console.error('[pannellum-wrapper] originalViewer упал:', e);
+                throw e;
+            }
         };
 
         const queue = [];
-        const proxy = {
-            _isProxy: true,
-            _ready: false,
-            _real: null
-        };
+        const proxy = { _isProxy: true, _ready: false, _real: null };
 
         ['on','off','loadScene','getScene','addScene','removeScene',
          'addHotSpot','removeHotSpot','lookAt','getPitch','setPitch',
@@ -357,15 +418,12 @@ FAR._installPannellumDbWrapper = function() {
             proxy._real = real;
             proxy._ready = true;
             queue.forEach(function(call) {
-                try {
-                    real[call.method].apply(real, call.args);
-                } catch (e) {
-                    console.warn('Отложенный вызов упал:', call.method, e);
-                }
+                try { real[call.method].apply(real, call.args); }
+                catch (e) { console.warn('Отложенный вызов упал:', call.method, e); }
             });
             queue.length = 0;
         }).catch(function(e) {
-            console.error('Pannellum DB wrapper: не удалось инициализировать viewer:', e);
+            console.error('[pannellum-wrapper] prep() упал:', e);
         });
 
         return proxy;
@@ -373,4 +431,5 @@ FAR._installPannellumDbWrapper = function() {
 
     window.pannellum._dbWrapped = true;
     window.pannellum._originalViewer = originalViewer;
+    console.log('[pannellum-wrapper] УСТАНОВЛЕНА');
 };
