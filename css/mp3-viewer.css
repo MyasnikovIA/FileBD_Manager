@@ -44,7 +44,7 @@
 
 /* ==== Основное окно ==== */
 .winamp-main {
-    flex: 0 0 300px;
+    flex: 0 0 0px;
     background: #1a1a1a;
     border: 2px solid #000;
     border-top-color: #4a4a4a;
