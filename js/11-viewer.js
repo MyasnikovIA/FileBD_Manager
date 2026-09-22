@@ -127,6 +127,7 @@ FAR._viewerCloseAll = function () {
     try { if (typeof FAR.closeViewer         === 'function') FAR.closeViewer();         } catch (e) {}
     try { if (typeof FAR.closePanoramaViewer === 'function') FAR.closePanoramaViewer(); } catch (e) {}
     try { if (typeof FAR.closePdfViewer      === 'function') FAR.closePdfViewer();      } catch (e) {}
+    try { if (typeof FAR.closeMp3Viewer      === 'function') FAR.closeMp3Viewer();      } catch (e) {}
     try { if (typeof FAR.closeJsdosViewer    === 'function') FAR.closeJsdosViewer();    } catch (e) {}
     try { if (typeof FAR.closeNesViewer      === 'function') FAR.closeNesViewer();      } catch (e) {}
     try { if (typeof FAR.closeEmulatorViewer === 'function') FAR.closeEmulatorViewer(); } catch (e) {}
@@ -268,6 +269,19 @@ FAR.openFile = async function (item, side, index) {
         }
     } catch (e) {
         console.warn('Ошибка проверки EmulatorJS:', e);
+    }
+
+    // ===== ПРОВЕРКА 4а: MP3 / аудио =====
+    try {
+        if (typeof FAR.isMp3 === 'function' && FAR.isMp3(item)) {
+            if (!FAR._viewerEnsureFn('openMp3Viewer')) return;
+            await FAR.openMp3Viewer(item, side);
+            if (myToken !== FAR._viewerToken) return;
+            FAR._viewerUpdateNavButtons();
+            return;
+        }
+    } catch (e) {
+        console.warn('Ошибка проверки MP3:', e);
     }
 
     // ===== ПРОВЕРКА 4: PDF =====

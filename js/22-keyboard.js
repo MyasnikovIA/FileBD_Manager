@@ -2,6 +2,11 @@ FAR.setupKeyboard = function() {
     document.addEventListener('keydown', function(e) {
         // === ESC: закрываем модалки по приоритету ===
         if (e.key === 'Escape') {
+            const mp3ModalEsc = document.getElementById('mp3ViewerModal');
+            if (mp3ModalEsc && !mp3ModalEsc.classList.contains('hidden')) {
+                FAR.closeMp3Viewer();
+                return;
+            }
             const ed = document.getElementById('panoramaEditorModal');
             if (ed && !ed.classList.contains('hidden')) {
                 FAR.closePanoramaEditor();
@@ -75,6 +80,10 @@ FAR.setupKeyboard = function() {
         // Модалка EmulatorJS — не перехватываем (стрелки идут в эмулятор)
         const emuModal2 = document.getElementById('emulatorViewerModal');
         if (emuModal2 && !emuModal2.classList.contains('hidden')) return;
+
+        // Модалка MP3 — не перехватываем (стрелки и пробел идут в <audio>)
+        const mp3Modal2 = document.getElementById('mp3ViewerModal');
+        if (mp3Modal2 && !mp3Modal2.classList.contains('hidden')) return;
 
         // Модалка PDF — не перехватываем
         const pdfModal2 = document.getElementById('pdfViewerModal');
