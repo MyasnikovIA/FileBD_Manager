@@ -2,6 +2,11 @@ FAR.setupKeyboard = function() {
     document.addEventListener('keydown', function(e) {
         // === ESC: закрываем модалки по приоритету ===
         if (e.key === 'Escape') {
+            const videoModalEsc = document.getElementById('videoViewerModal');
+            if (videoModalEsc && !videoModalEsc.classList.contains('hidden')) {
+                FAR.closeVideoViewer();
+                return;
+            }
             const mp3ModalEsc = document.getElementById('mp3ViewerModal');
             if (mp3ModalEsc && !mp3ModalEsc.classList.contains('hidden')) {
                 FAR.closeMp3Viewer();
@@ -84,6 +89,10 @@ FAR.setupKeyboard = function() {
         // Модалка MP3 — не перехватываем (стрелки и пробел идут в <audio>)
         const mp3Modal2 = document.getElementById('mp3ViewerModal');
         if (mp3Modal2 && !mp3Modal2.classList.contains('hidden')) return;
+
+        // Модалка видео — не перехватываем (пробел/стрелки идут в <video>)
+        const videoModal2 = document.getElementById('videoViewerModal');
+        if (videoModal2 && !videoModal2.classList.contains('hidden')) return;
 
         // Модалка PDF — не перехватываем
         const pdfModal2 = document.getElementById('pdfViewerModal');

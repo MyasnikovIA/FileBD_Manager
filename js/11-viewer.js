@@ -33,6 +33,8 @@ FAR.VIEWER_MODALS = [
     { modal: 'viewerModal',            prev: 'viewerPrevBtn', next: 'viewerNextBtn' },
     { modal: 'panoramaViewerModal',    prev: 'panoPrevBtn',   next: 'panoNextBtn'   },
     { modal: 'pdfViewerModal',         prev: 'pdfPrevBtn',    next: 'pdfNextBtn'    },
+    { modal: 'mp3ViewerModal',         prev: 'mp3PrevBtn',    next: 'mp3NextBtn'    },
+    { modal: 'videoViewerModal',       prev: 'videoPrevBtn',  next: 'videoNextBtn'  },
     { modal: 'jsdosViewerModal',       prev: 'jsdosPrevBtn',  next: 'jsdosNextBtn'  },
     { modal: 'nesViewerModal',         prev: 'nesPrevBtn',    next: 'nesNextBtn'    },
     { modal: 'emulatorViewerModal',    prev: 'emuPrevBtn',    next: 'emuNextBtn'    }
@@ -128,6 +130,7 @@ FAR._viewerCloseAll = function () {
     try { if (typeof FAR.closePanoramaViewer === 'function') FAR.closePanoramaViewer(); } catch (e) {}
     try { if (typeof FAR.closePdfViewer      === 'function') FAR.closePdfViewer();      } catch (e) {}
     try { if (typeof FAR.closeMp3Viewer      === 'function') FAR.closeMp3Viewer();      } catch (e) {}
+    try { if (typeof FAR.closeVideoViewer    === 'function') FAR.closeVideoViewer();    } catch (e) {}
     try { if (typeof FAR.closeJsdosViewer    === 'function') FAR.closeJsdosViewer();    } catch (e) {}
     try { if (typeof FAR.closeNesViewer      === 'function') FAR.closeNesViewer();      } catch (e) {}
     try { if (typeof FAR.closeEmulatorViewer === 'function') FAR.closeEmulatorViewer(); } catch (e) {}
@@ -282,6 +285,19 @@ FAR.openFile = async function (item, side, index) {
         }
     } catch (e) {
         console.warn('Ошибка проверки MP3:', e);
+    }
+
+    // ===== ПРОВЕРКА 4б: Видео =====
+    try {
+        if (typeof FAR.isVideo === 'function' && FAR.isVideo(item)) {
+            if (!FAR._viewerEnsureFn('openVideoViewer')) return;
+            await FAR.openVideoViewer(item, side);
+            if (myToken !== FAR._viewerToken) return;
+            FAR._viewerUpdateNavButtons();
+            return;
+        }
+    } catch (e) {
+        console.warn('Ошибка проверки видео:', e);
     }
 
     // ===== ПРОВЕРКА 4: PDF =====
