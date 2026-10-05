@@ -13,6 +13,7 @@
 // приложений — в 44-wm-apps.js.
 
 FAR.WM = FAR.WM || {};
+FAR.WM.LS_MODE_KEY = 'filebd_ui_mode';
 
 FAR.WM.state = {
     active: false,
@@ -51,6 +52,9 @@ FAR.WM.enter = function () {
     root.classList.add('active');
     FAR.WM.state.active = true;
 
+    // Запоминаем режим для следующей сессии
+    FAR.WM.saveMode('wm');
+
     FAR.WM._bindGlobalEvents();
     FAR.WM._renderDesktopIcons();
     FAR.WM._renderStartMenu();
@@ -63,6 +67,9 @@ FAR.WM.enter = function () {
     FAR.toast('Оконный режим включён', 'info');
 };
 
+/**
+ * Выключает оконный режим, закрывая все окна.
+ */
 /**
  * Выключает оконный режим, закрывая все окна.
  */
@@ -79,6 +86,9 @@ FAR.WM.exit = function () {
     FAR.WM.state.active = false;
     FAR.WM.state.activeWindowId = null;
     FAR.WM.state.zTop = 6000;
+
+    // Запоминаем режим
+    FAR.WM.saveMode('panel');
 
     FAR.WM._stopClock();
     FAR.toast('Возврат в классический режим', 'info');
@@ -817,4 +827,41 @@ FAR.WM.updateTray = function () {
             prEl.style.display = 'none';
         }
     }
+};
+
+
+FAR.WM.getSavedMode = function () {
+    try {
+        const v = localStorage.getItem(FAR.WM.LS_MODE_KEY);
+        if (v === 'wm' || v === 'panel') return v;
+    } catch (e) { /* ignore */ }
+    return 'panel';
+};
+
+
+FAR.WM.saveMode = function (mode) {
+    try {
+        if (mode === 'wm' || mode === 'panel') {
+            localStorage.setItem(FAR.WM.LS_MODE_KEY, mode);
+        }
+    } catch (e) { /* ignore */ }
+};
+
+FAR.WM.clearMode = function () {
+    try {
+        localStorage.removeItem(FAR.WM.LS_MODE_KEY);
+    } catch (e) { /* ignore */ }
+};
+
+/**
+ * Переключает в панельный режим. Вызывается из меню Пуск
+ * кнопкой «🗔 Панельный режим».
+ */
+FAR.WM.exitToPanelMode = function () {
+    try { FAR.WM.closeStartMenu(); } catch (e) { /* ignore */ }
+    FAR.WM.saveMode('panel');
+    if (FAR.WM.state.active) {
+        FAR.WM.exit();
+    }
+    FAR.toast('Режим: панельный', 'info');
 };

@@ -28,6 +28,15 @@ FAR.onAuthButton = function () {
         try { localStorage.removeItem(FAR.LS_CONN_LEFT); } catch (e) {}
         try { localStorage.removeItem(FAR.LS_CONN_RIGHT); } catch (e) {}
 
+        // Если открыт оконный режим — выходим в панельный
+        if (typeof FAR.WM !== 'undefined' && FAR.WM.state && FAR.WM.state.active) {
+            try { FAR.WM.exit(); } catch (e) {}
+        }
+        // Сбрасываем сохранённый режим: следующий вход — с дефолта
+        if (typeof FAR.WM !== 'undefined' && typeof FAR.WM.clearMode === 'function') {
+            FAR.WM.clearMode();
+        }
+
         FAR.side.left  = FAR.createSideContext('left');
         FAR.side.right = FAR.createSideContext('right');
         FAR.currentConn = null;

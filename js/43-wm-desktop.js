@@ -253,3 +253,4 @@ FAR.WM.enter = function () {
     FAR.WM._bindDesktopUI();
     FAR.WM._renderDesktopIcons();
 };
+

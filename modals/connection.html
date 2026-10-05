@@ -25,6 +25,17 @@
                     <label for="connPass">Пароль пользователя</label>
                     <input type="password" id="connPass" placeholder="password" autocomplete="current-password">
                 </div>
+
+                <!-- Выбор режима работы: виден только при глобальном
+                     подключении (не при side-only) -->
+                <div class="conn-field" id="connUiModeRow">
+                    <label for="connUiMode">Режим работы после подключения</label>
+                    <select id="connUiMode">
+                        <option value="panel">🗔 Панельный (FAR-подобный)</option>
+                        <option value="wm">🖥 Оконный (рабочий стол)</option>
+                    </select>
+                </div>
+
                 <div class="conn-error" id="connError"></div>
                 <div class="conn-hint">
                     Данные сохраняются в LocalStorage браузера. При повторном входе

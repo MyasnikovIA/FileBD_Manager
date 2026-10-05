@@ -4,7 +4,6 @@
 //
 // ЛЕНИВАЯ ЗАГРУЗКА: после успешного подключения грузим только
 // корень нужной панели/обеих панелей.
-
 FAR.connModalSide = null;
 
 FAR.openConnModal = function (required, side) {
@@ -24,6 +23,28 @@ FAR.openConnModal = function (required, side) {
     document.getElementById('connConnectBtn').textContent = 'Подключиться';
     document.getElementById('connCloseBtn').style.display  = required ? 'none' : '';
     document.getElementById('connCancelBtn').style.display = required ? 'none' : '';
+
+    // ============================================================
+    // Выбор режима работы
+    // ============================================================
+    // Показываем select режима ТОЛЬКО для глобального подключения
+    // (side === null). Для side-only подключения режим не имеет
+    // смысла — он не меняет глобальное состояние UI.
+    const modeRow = document.getElementById('connUiModeRow');
+    const modeSel = document.getElementById('connUiMode');
+    if (modeRow && modeSel) {
+        if (FAR.connModalSide) {
+            modeRow.style.display = 'none';
+        } else {
+            modeRow.style.display = '';
+            // Предзаполняем сохранённым режимом (или дефолт 'panel')
+            let saved = 'panel';
+            if (typeof FAR.WM !== 'undefined' && typeof FAR.WM.getSavedMode === 'function') {
+                saved = FAR.WM.getSavedMode();
+            }
+            modeSel.value = saved;
+        }
+    }
 
     const titleEl = document.getElementById('connTitle');
     const tgtEl = document.getElementById('connTarget');
@@ -52,6 +73,13 @@ FAR.submitConnModal = async function () {
     const dbn  = document.getElementById('connDb').value.trim();
     const user = document.getElementById('connUser').value.trim();
     const pass = document.getElementById('connPass').value;
+
+    // Читаем выбранный режим (только для глобального подключения)
+    let uiMode = 'panel';
+    if (!FAR.connModalSide) {
+        const modeSel = document.getElementById('connUiMode');
+        if (modeSel) uiMode = modeSel.value || 'panel';
+    }
 
     const errEl = document.getElementById('connError');
     errEl.textContent = '';
@@ -93,6 +121,22 @@ FAR.submitConnModal = async function () {
             FAR.renderPanel('right', { skipLoad: true });
         }
         FAR.updateConnIndicators();
+
+        // ============================================================
+        // Применяем выбранный режим (только для глобального подключения).
+        // ============================================================
+        if (!FAR.connModalSide && typeof FAR.WM !== 'undefined') {
+            // Сохраняем выбор
+            if (typeof FAR.WM.saveMode === 'function') {
+                FAR.WM.saveMode(uiMode);
+            }
+            // Применяем
+            if (uiMode === 'wm') {
+                if (!FAR.WM.state.active) FAR.WM.enter();
+            } else {
+                if (FAR.WM.state.active) FAR.WM.exit();
+            }
+        }
     } catch (e) {
         console.error('connect error:', e);
         let msg = e && e.message ? e.message : String(e);

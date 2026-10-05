@@ -127,6 +127,28 @@ document.addEventListener('DOMContentLoaded', async function() {
             if (typeof FAR.updateConnIndicators === 'function') {
                 FAR.updateConnIndicators();
             }
+
+            // ============================================================
+            // Восстанавливаем последний режим работы.
+            //
+            // Если пользователь закрыл страницу в оконном режиме —
+            // автоматически входим в оконный режим. Иначе остаёмся
+            // в панельном (дефолт).
+            // ============================================================
+            if (typeof FAR.WM !== 'undefined' && typeof FAR.WM.getSavedMode === 'function') {
+                const savedMode = FAR.WM.getSavedMode();
+                if (savedMode === 'wm' && !FAR.WM.state.active) {
+                    // Небольшая задержка, чтобы DOM и WM успели
+                    // полностью инициализироваться
+                    setTimeout(function () {
+                        try {
+                            FAR.WM.enter();
+                        } catch (e) {
+                            console.warn('[WM] restore mode failed:', e);
+                        }
+                    }, 200);
+                }
+            }
         } catch (e) {
             FAR.hideLoading();
             console.error('auto-connect error:', e);
