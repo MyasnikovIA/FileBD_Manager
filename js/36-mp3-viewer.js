@@ -474,10 +474,12 @@ FAR._mp3PlayTrackByIndex = async function (idx) {
 
     FAR._mp3RenderPlaylist();
 
-    // === Синхронизируем выделение на панели-источнике ===
-    // Чтобы при закрытии плеера курсор и выделение остались
-    // на последнем проигранном файле.
-    FAR._mp3SyncPanelSelection(entry.item, side);
+    // === Синхронизация выделения в панели — только в
+    // классическом режиме. В оконном режиме это мешает,
+    // потому что renderPanel(side) рендерит в окно Проводника.
+    if (!FAR.WM || !FAR.WM.state.active) {
+        FAR._mp3SyncPanelSelection(entry.item, side);
+    }
 
     try {
         await FAR._mp3LoadTrack(entry.item, side);

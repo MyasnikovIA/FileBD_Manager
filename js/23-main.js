@@ -44,7 +44,9 @@ FAR.injectModals = function() {
         'modals/gamepad-setup.html',
         'modals/progress.html',
         'modals/loading.html',
-        'modals/debug.html'
+        'modals/debug.html',
+        'modals/desktop.html',
+        'modals/wm-file-dialog.html'
     ];
     let html = '';
     for (const f of files) {
@@ -52,7 +54,6 @@ FAR.injectModals = function() {
     }
     root.innerHTML = html;
 };
-
 // ============================================================
 // Старт
 // ============================================================
@@ -80,6 +81,14 @@ document.addEventListener('DOMContentLoaded', async function() {
     FAR.setupGamepadAuto();
     FAR.setupPanelContextMenu();
 
+    if (typeof FAR.WM !== 'undefined') {
+        setTimeout(function () {
+            if (typeof FAR.WM.updateTray === 'function') {
+                FAR.WM.updateTray();
+            }
+        }, 500);
+    }
+
     FAR._installPannellumDbWrapper();
 
     // ============================================================
@@ -87,9 +96,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     // ============================================================
     const savedGlobal = FAR.loadConnFromLS();
     const savedLeft   = (typeof FAR.loadSideConnFromLS === 'function')
-                        ? FAR.loadSideConnFromLS('left')  : null;
+        ? FAR.loadSideConnFromLS('left')  : null;
     const savedRight  = (typeof FAR.loadSideConnFromLS === 'function')
-                        ? FAR.loadSideConnFromLS('right') : null;
+        ? FAR.loadSideConnFromLS('right') : null;
 
     const saved = savedGlobal || savedLeft || savedRight;
 
