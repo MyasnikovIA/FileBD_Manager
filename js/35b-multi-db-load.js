@@ -84,6 +84,112 @@ FAR.reloadPanel = async function (side) {
 // ============================================================
 // 2. Чтение тела файла из БД конкретной стороны
 // ============================================================
+//
+// ВАЖНО: PouchDB.getAttachment может вернуть:
+//   • Blob (если браузер поддерживает Blob и опция binary:true)
+//   • ArrayBuffer
+//   • base64-строку (если Blob недоступен или binary не передан)
+// Поэтому раньше код падал на `blob.arrayBuffer is not a function`.
+// Ниже — универсальный декодер.
+
+/**
+ * Приводит вложение, полученное из PouchDB, к Uint8Array.
+ * @param {Blob|ArrayBuffer|string} att
+ * @param {string} label — для сообщения об ошибке
+ * @returns {Uint8Array}
+ */
+FAR._attachmentToBytes = function (att, label) {
+    if (att == null) {
+        throw new Error('Пустое вложение ' + (label || ''));
+    }
+
+    // 1. Blob
+    if (typeof Blob !== 'undefined' && att instanceof Blob) {
+        // Синхронно получить нельзя — эта ветка обрабатывается
+        // в вызывающем коде через await att.arrayBuffer().
+        throw new Error('_attachmentToBytes: Blob требует async-обработки');
+    }
+
+    // 2. ArrayBuffer
+    if (att instanceof ArrayBuffer) {
+        return new Uint8Array(att);
+    }
+
+    // 3. TypedArray / Buffer
+    if (ArrayBuffer.isView(att)) {
+        return new Uint8Array(att.buffer, att.byteOffset, att.byteLength);
+    }
+
+    // 4. base64-строка
+    if (typeof att === 'string') {
+        let bin;
+        try {
+            bin = atob(att);
+        } catch (e) {
+            throw new Error('Некорректная base64-строка вложения ' + (label || ''));
+        }
+        const out = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+        return out;
+    }
+
+    throw new Error('Неизвестный тип вложения ' + (label || '') +
+        ': ' + (att && att.constructor && att.constructor.name));
+};
+
+/**
+ * Асинхронная обёртка: принимает результат getAttachment и
+ * возвращает { bytes: Uint8Array, contentType: string }.
+ */
+FAR._attachmentToBytesAsync = async function (att, fallbackContentType) {
+    if (att == null) {
+        throw new Error('Пустое вложение');
+    }
+
+    // Blob — самый частый случай
+    if (typeof Blob !== 'undefined' && att instanceof Blob) {
+        const buf = await att.arrayBuffer();
+        return {
+            bytes: new Uint8Array(buf),
+            contentType: att.type || fallbackContentType || 'application/octet-stream'
+        };
+    }
+
+    // ArrayBuffer
+    if (att instanceof ArrayBuffer) {
+        return {
+            bytes: new Uint8Array(att),
+            contentType: fallbackContentType || 'application/octet-stream'
+        };
+    }
+
+    // TypedArray / Buffer
+    if (ArrayBuffer.isView(att)) {
+        return {
+            bytes: new Uint8Array(att.buffer, att.byteOffset, att.byteLength),
+            contentType: fallbackContentType || 'application/octet-stream'
+        };
+    }
+
+    // base64-строка
+    if (typeof att === 'string') {
+        let bin;
+        try {
+            bin = atob(att);
+        } catch (e) {
+            throw new Error('Некорректная base64-строка вложения');
+        }
+        const out = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+        return {
+            bytes: out,
+            contentType: fallbackContentType || 'application/octet-stream'
+        };
+    }
+
+    throw new Error('Неизвестный тип вложения: ' +
+        (att && att.constructor && att.constructor.name));
+};
 
 FAR.readFileBodyFromSide = async function (side, item) {
     const s = FAR.side[side];
@@ -91,16 +197,20 @@ FAR.readFileBodyFromSide = async function (side, item) {
 
     const contentType = item.contentType || 'application/octet-stream';
 
-    // 1. Основной путь: вложение 'b' в самом документе
+    // 1. Основной путь: вложение 'b' в самом документе.
+    // Пробуем сразу с { binary: true } — так PouchDB отдаёт Blob
+    // в браузерах с поддержкой Blob. Если не поддерживается —
+    // PouchDB проигнорирует опцию и вернёт строку.
     try {
-        const blob = await s.db.getAttachment(item._id, 'b');
-        const buf = await blob.arrayBuffer();
-        return {
-            data: new Uint8Array(buf),
-            contentType: blob.type || contentType
-        };
+        const att = await s.db.getAttachment(item._id, 'b', { binary: true });
+        const { bytes, contentType: ct } =
+            await FAR._attachmentToBytesAsync(att, contentType);
+        return { data: bytes, contentType: ct };
     } catch (e) {
-        if (e.status !== 404) throw e;   // сеть/401 — не маскируем
+        // 404 — вложения нет, идём в fallback на чанки.
+        // Всё остальное (в т.ч. TypeError внутри) — реальная ошибка,
+        // НЕ маскируем.
+        if (e.status !== 404) throw e;
     }
 
     // 2. Fallback: открытые чанки (без шифрования).
@@ -115,9 +225,9 @@ FAR.readFileBodyFromSide = async function (side, item) {
     const chunks = [];
     for (const chunkId of children) {
         try {
-            const blob = await s.db.getAttachment(chunkId, 'b');
-            const buf = new Uint8Array(await blob.arrayBuffer());
-            chunks.push(buf);
+            const att = await s.db.getAttachment(chunkId, 'b', { binary: true });
+            const { bytes } = await FAR._attachmentToBytesAsync(att, contentType);
+            chunks.push(bytes);
         } catch (e3) {
             if (e3.status !== 404) throw e3;
         }

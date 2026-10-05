@@ -227,3 +227,35 @@ FAR._restoreCursor = function(side, fileName, cursorIdx) {
         FAR.rightAnchor = idx;
     }
 };
+
+/**
+ * Сохраняет Blob как файл через временный <a download>.
+ * Единая точка для всех скачиваний в проекте.
+ *
+ * @param {Blob} blob         — данные файла
+ * @param {string} fileName   — имя файла для сохранения
+ */
+FAR.saveBlobAs = function (blob, fileName) {
+    if (!(blob instanceof Blob)) {
+        throw new Error('saveBlobAs: ожидался Blob, получено ' +
+            (blob && blob.constructor && blob.constructor.name));
+    }
+
+    const name = String(fileName || 'file.bin');
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.style.display = 'none';
+
+    document.body.appendChild(a);
+    a.click();
+
+    // Убираем <a> и освобождаем URL асинхронно, чтобы
+    // Firefox/Chrome гарантированно успели начать скачивание.
+    setTimeout(function () {
+        try { document.body.removeChild(a); } catch (e) {}
+        try { URL.revokeObjectURL(url); } catch (e) {}
+    }, 1000);
+};

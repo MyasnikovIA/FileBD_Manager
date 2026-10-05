@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
   <component name="BranchesTreeState">
     <expand>
       <path>
@@ -20,14 +23,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="58b0bec6-76ed-43a5-8023-6ef531bb6bea" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/css/video-viewer.css" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/js/37-video-viewer.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/modals/video-viewer.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/index.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/11-viewer.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/11-viewer.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/22-keyboard.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/22-keyboard.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/23-main.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/23-main.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/js/35b-multi-db-load.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/35b-multi-db-load.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -37,22 +35,41 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="ProjectColorInfo"><![CDATA[{
+  "associatedIndex": 3
+}]]></component>
   <component name="ProjectId" id="3JADtWdfVBUfZ6kxdG9QQiPSRCc" />
-  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">
-    <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
-    <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$/lib" />
-  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "main",
+    "last_opened_file_path": "C:/AppServ/www/FileBD_Manager_Git",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\AppServ\www\FileBD_Manager_Git\lib" />
       <recent name="C:\AppServ\www\FileBD_Manager_Git" />
     </key>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-jdk-9823dce3aa75-fbdcb00ec9e3-intellij.indexing.shared.core-IU-251.26927.53" />
+        <option value="bundled-js-predefined-d6986cc7102b-09060db00ec0-JavaScript-IU-251.26927.53" />
+      </set>
+    </attachedChunks>
   </component>
   <component name="SvnConfiguration">
     <configuration />
@@ -64,8 +81,12 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1789095193587</updated>
+      <workItem from="1791208933281" duration="1006000" />
     </task>
     <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
     <option name="TAB_STATES">
@@ -77,28 +98,5 @@
         </entry>
       </map>
     </option>
-    <option name="oldMeFiltersMigrated" value="true" />
-  </component>
-  <component name="WindowStateProjectService">
-    <state x="2633" y="322" key="#com.intellij.fileTypes.FileTypeChooser" timestamp="1790054607300">
-      <screen x="1920" y="0" width="1920" height="1040" />
-    </state>
-    <state x="475" y="305" key="#com.intellij.fileTypes.FileTypeChooser/0.0.1280.984/1280.0.1280.984@0.0.1280.984" timestamp="1789141478208" />
-    <state x="712" y="322" key="#com.intellij.fileTypes.FileTypeChooser/0.0.1920.1040/1920.0.1920.1040@0.0.1920.1040" timestamp="1789095450300" />
-    <state x="2633" y="322" key="#com.intellij.fileTypes.FileTypeChooser/0.0.1920.1040/1920.0.1920.1040@1920.0.1920.1040" timestamp="1790054607300" />
-    <state x="2587" y="253" width="585" height="624" key="find.popup" timestamp="1790138071369">
-      <screen x="1920" y="0" width="1920" height="1040" />
-    </state>
-    <state x="445" y="239" width="555" height="534" key="find.popup/0.0.1280.984/1280.0.1280.984@0.0.1280.984" timestamp="1789142483303" />
-    <state x="1725" y="239" width="555" height="534" key="find.popup/0.0.1280.984/1280.0.1280.984@1280.0.1280.984" timestamp="1789278980041" />
-    <state x="667" y="253" width="585" height="534" key="find.popup/0.0.1920.1040/1920.0.1920.1040@0.0.1920.1040" timestamp="1790068908508" />
-    <state x="2587" y="253" width="585" height="624" key="find.popup/0.0.1920.1040/1920.0.1920.1040@1920.0.1920.1040" timestamp="1790138071369" />
-    <state x="2543" y="225" width="672" height="678" key="search.everywhere.popup" timestamp="1790138047848">
-      <screen x="1920" y="0" width="1920" height="1040" />
-    </state>
-    <state x="415" y="213" width="672" height="642" key="search.everywhere.popup/0.0.1280.984/1280.0.1280.984@0.0.1280.984" timestamp="1789212379449" />
-    <state x="1695" y="213" width="672" height="642" key="search.everywhere.popup/0.0.1280.984/1280.0.1280.984@1280.0.1280.984" timestamp="1789278855264" />
-    <state x="623" y="225" width="672" height="678" key="search.everywhere.popup/0.0.1920.1040/1920.0.1920.1040@0.0.1920.1040" timestamp="1789963318857" />
-    <state x="2543" y="225" width="672" height="678" key="search.everywhere.popup/0.0.1920.1040/1920.0.1920.1040@1920.0.1920.1040" timestamp="1790138047848" />
   </component>
 </project>
