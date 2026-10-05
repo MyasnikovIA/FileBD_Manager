@@ -200,6 +200,36 @@
     z-index: 5100;
     user-select: none;
 }
+
+/* ============================================================
+   КОНТЕЙНЕР КНОПОК ЗАДАЧ
+   Именно это правило отсутствовало. Без него кнопки
+   выстраивались inline-block'ами и переносились вниз, когда
+   суммарная ширина превышала доступное место.
+   Теперь: строго горизонтальный flex, запрет сжатия и переноса,
+   при переполнении — горизонтальный скролл внутри контейнера.
+   ============================================================ */
+#wmTaskButtons {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 4px;
+    flex: 0 1 auto;
+    min-width: 0;
+    height: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+}
+#wmTaskButtons::-webkit-scrollbar {
+    height: 4px;
+}
+#wmTaskButtons::-webkit-scrollbar-thumb {
+    background: #2b2b3c;
+    border-radius: 2px;
+}
+
 .wm-tb-btn {
     height: 40px;
     min-width: 40px;
@@ -216,6 +246,8 @@
     position: relative;
     transition: background 0.1s;
     max-width: 200px;
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 .wm-tb-btn:hover { background: rgba(255,255,255,0.08); }
 .wm-tb-btn .wm-tb-label {
@@ -239,6 +271,7 @@
     height: 28px;
     background: #2b2b3c;
     margin: 0 4px;
+    flex-shrink: 0;
 }
 .wm-tb-spacer { flex: 1; }
 
@@ -251,6 +284,7 @@
     height: 40px;
     border-radius: 4px;
     cursor: default;
+    flex-shrink: 0;
 }
 .wm-tray .wm-tray-item {
     display: flex;
@@ -287,6 +321,7 @@
     align-items: center;
     justify-content: center;
     border-radius: 4px;
+    flex-shrink: 0;
 }
 #wmStartBtn:hover { background: rgba(255,255,255,0.08); }
 #wmStartBtn.open { background: rgba(74,163,255,0.25); }
@@ -529,6 +564,25 @@
     font-weight: bold;
     margin-left: 6px;
 }
+
+/* Классы-подсветки для drag&drop между окнами Проводника */
+.wm-window.wm-drop-target-candidate {
+    box-shadow: 0 12px 40px rgba(0,0,0,0.65),
+    0 0 0 2px rgba(74,163,255,0.35) inset;
+}
+
+.wm-window.wm-drop-target-hover {
+    box-shadow: 0 12px 40px rgba(0,0,0,0.65),
+    0 0 0 3px #a6e3a1 inset;
+    background: rgba(166,227,161,0.06);
+}
+
+/* Призрак перетаскивания */
+.wm-drag-ghost {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    white-space: nowrap;
+}
+
 .wm-fd-footer .wm-fd-cancel { background: #2b2b3c; color: #e6e6e6; }
 .wm-fd-footer .wm-fd-ok { background: #4aa3ff; color: #fff; }
 .wm-fd-footer .wm-fd-ok:disabled { opacity: 0.4; cursor: not-allowed; }

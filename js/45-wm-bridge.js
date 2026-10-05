@@ -21,7 +21,161 @@
 FAR.WM._orig = FAR.WM._orig || {};
 
 // ============================================================
+// Drag&drop между окнами Проводника
+// ============================================================
+
+FAR.WM._dragPayload = null;
+FAR.WM._dragGhostEl = null;
+
+FAR.WM._beginDragFromExplorer = function (win, side, startX, startY) {
+    const ctx = FAR.side[side];
+    if (!ctx) return;
+
+    const selSet = ctx.selectedIdx;
+    const files = ctx.files || [];
+    let items = [];
+
+    if (selSet && selSet.size > 0) {
+        for (const idx of Array.from(selSet).sort((a, b) => a - b)) {
+            if (idx >= 0 && idx < files.length) {
+                const f = files[idx];
+                if (f) items.push({ _id: f._id, name: f.name, path: f.path, isFolder: f.isFolder });
+            }
+        }
+    }
+    if (items.length === 0) return;
+
+    FAR.WM._dragPayload = {
+        sourceWinId: win.id,
+        sourceSide: side,
+        items: items,
+        mode: 'copy'
+    };
+
+    const ghost = document.createElement('div');
+    ghost.className = 'wm-drag-ghost';
+    ghost.textContent = items.length === 1
+        ? '📦 ' + items[0].name
+        : '📦 ' + items.length + ' элементов';
+    ghost.style.cssText =
+        'position:fixed;pointer-events:none;z-index:99999;' +
+        'background:rgba(74,163,255,0.92);color:#fff;' +
+        'padding:6px 12px;border-radius:5px;font-size:12px;' +
+        'box-shadow:0 4px 12px rgba(0,0,0,0.5);' +
+        'transform:translate(12px,12px);';
+    ghost.style.left = startX + 'px';
+    ghost.style.top = startY + 'px';
+    document.body.appendChild(ghost);
+    FAR.WM._dragGhostEl = ghost;
+
+    FAR.WM.state.windows.forEach(function (w) {
+        if (w.appId === 'explorer') {
+            w.el.classList.add('wm-drop-target-candidate');
+        }
+    });
+
+    FAR.setStatus('Перетаскивание: ' + items.length + ' элемент(ов). Отпустите в окне Проводника.');
+};
+
+FAR.WM._updateDragGhost = function (x, y) {
+    if (FAR.WM._dragGhostEl) {
+        FAR.WM._dragGhostEl.style.left = x + 'px';
+        FAR.WM._dragGhostEl.style.top  = y + 'px';
+    }
+};
+
+FAR.WM._endDrag = function () {
+    const payload = FAR.WM._dragPayload;
+    FAR.WM._dragPayload = null;
+
+    if (FAR.WM._dragGhostEl) {
+        try { FAR.WM._dragGhostEl.remove(); } catch (e) {}
+        FAR.WM._dragGhostEl = null;
+    }
+
+    FAR.WM.state.windows.forEach(function (w) {
+        w.el.classList.remove('wm-drop-target-candidate', 'wm-drop-target-hover');
+    });
+
+    return payload;
+};
+
+FAR.WM._performDrop = async function (targetWin, targetSide) {
+    const payload = FAR.WM._endDrag();
+    if (!payload) return;
+
+    if (targetWin.id === payload.sourceWinId) {
+        FAR.toast('Перетащите в другое окно Проводника', 'info');
+        return;
+    }
+
+    const srcSide = payload.sourceSide;
+    const dstSide = targetSide;
+
+    if (srcSide === dstSide) {
+        FAR.toast('Источник и цель — одна панель. Откройте второе окно Проводника.', 'warning');
+        return;
+    }
+
+    const sSrc = FAR.side[srcSide];
+    const sDst = FAR.side[dstSide];
+    if (!sSrc || !sSrc.db) { FAR.toast('Источник не подключён', 'warning'); return; }
+    if (!sDst || !sDst.db) { FAR.toast('Цель не подключена', 'warning'); return; }
+
+    const mode = payload.mode || 'copy';
+
+    const srcFiles = sSrc.files || [];
+    const wantedIds = new Set(payload.items.map(it => it._id));
+    const indices = [];
+    srcFiles.forEach(function (f, idx) {
+        if (f && wantedIds.has(f._id)) indices.push(idx);
+    });
+
+    if (indices.length === 0) {
+        FAR.toast('Перетаскиваемые файлы не найдены в текущей папке источника', 'warning');
+        return;
+    }
+
+    const prevActive = FAR.activePanel;
+    FAR.activePanel = srcSide;
+
+    const prevSel = Array.from(sSrc.selectedIdx);
+    const prevAnchor = sSrc.anchor;
+    sSrc.selectedIdx.clear();
+    indices.forEach(i => sSrc.selectedIdx.add(i));
+    sSrc.anchor = indices[0];
+
+    try {
+        await FAR.transferBetweenSides(mode);
+    } catch (e) {
+        console.error('[WM drop] transfer failed:', e);
+        FAR.toast('Ошибка переноса: ' + e.message, 'error');
+    } finally {
+        FAR.activePanel = prevActive;
+        sSrc.selectedIdx.clear();
+        prevSel.forEach(i => sSrc.selectedIdx.add(i));
+        sSrc.anchor = prevAnchor;
+    }
+
+    await FAR.reloadPanel('left');
+    await FAR.reloadPanel('right');
+    FAR.renderPanel('left');
+    FAR.renderPanel('right');
+
+    FAR.toast(
+        (mode === 'move' ? 'Перенесено' : 'Скопировано') +
+        ': ' + payload.items.length + ' элемент(ов)',
+        'success'
+    );
+};
+
+// ============================================================
 // Проводник FileBD
+// ============================================================
+
+// ============================================================
+// Файл: js/45-wm-bridge.js
+// Функция: FAR.WM._mountExplorerPanel (полный листинг)
 // ============================================================
 
 FAR.WM._mountExplorerPanel = async function (win, props) {
@@ -53,7 +207,7 @@ FAR.WM._mountExplorerPanel = async function (win, props) {
     win.bodyEl.appendChild(pathBar);
 
     const panelHost = document.createElement('div');
-    panelHost.style.cssText = 'flex:1; min-height:0; display:flex; overflow:hidden;';
+    panelHost.style.cssText = 'flex:1; min-height:0; display:flex; overflow:hidden; position:relative;';
     win.bodyEl.appendChild(panelHost);
 
     const renderPathBar = function () {
@@ -64,12 +218,36 @@ FAR.WM._mountExplorerPanel = async function (win, props) {
 
         pathBar.innerHTML = '';
 
-        const dbBadge = document.createElement('span');
-        dbBadge.textContent = '🗄️ ' + dbLabel;
-        dbBadge.style.cssText =
-            'color:#89b4fa; padding:2px 8px; background:#1a1a2a; ' +
-            'border-radius:3px; margin-right:6px; flex-shrink:0;';
-        pathBar.appendChild(dbBadge);
+        // ============================================================
+        // Кнопка смены БД для этой панели (новая).
+        // Открывает диалог подключения, привязанный ТОЛЬКО к side.
+        // Классический режим не затрагивается — там по-прежнему
+        // работает клик по шапке панели.
+        // ============================================================
+        const dbBtn = document.createElement('button');
+        dbBtn.className = 'wm-explorer-db-btn';
+        dbBtn.type = 'button';
+        dbBtn.textContent = '🗄️ ' + dbLabel;
+        dbBtn.title = 'Сменить БД для этой панели (текущая: ' + dbLabel + ')';
+        dbBtn.style.cssText =
+            'color:#89b4fa; padding:2px 10px; background:#1a1a2a; ' +
+            'border:1px solid #2b2b3c; border-radius:3px; ' +
+            'margin-right:6px; flex-shrink:0; cursor:pointer; ' +
+            'font-family:monospace; font-size:12px; ' +
+            'transition:background 0.12s, border-color 0.12s;';
+        dbBtn.addEventListener('mouseenter', function () {
+            dbBtn.style.background = 'rgba(74,163,255,0.18)';
+            dbBtn.style.borderColor = '#4aa3ff';
+        });
+        dbBtn.addEventListener('mouseleave', function () {
+            dbBtn.style.background = '#1a1a2a';
+            dbBtn.style.borderColor = '#2b2b3c';
+        });
+        dbBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            FAR.WM._openExplorerConnDialog(win, side);
+        });
+        pathBar.appendChild(dbBtn);
 
         const sep0 = document.createElement('span');
         sep0.textContent = '›';
@@ -142,7 +320,7 @@ FAR.WM._mountExplorerPanel = async function (win, props) {
     }, 400);
     win.props._pathWatcher = pathWatcher;
 
-    // Гасим встроенные onclick/ondblclick.
+    // Клик по элементу — выделение (гасим inline onclick/ondblclick).
     panelHost.addEventListener('click', function (e) {
         const itemEl = e.target.closest('.file-item');
         if (!itemEl) return;
@@ -155,6 +333,7 @@ FAR.WM._mountExplorerPanel = async function (win, props) {
         renderPathBar();
     }, true);
 
+    // Двойной клик — открытие файла / вход в папку.
     panelHost.addEventListener('dblclick', async function (e) {
         const itemEl = e.target.closest('.file-item');
         if (!itemEl) return;
@@ -192,11 +371,14 @@ FAR.WM._mountExplorerPanel = async function (win, props) {
         }
     }, true);
 
+    // Контекстное меню (ПКМ).
     panelHost.addEventListener('contextmenu', function (e) {
         e.preventDefault();
         e.stopPropagation();
+
         FAR.activePanel = side;
         FAR.renderPanel(side);
+
         const itemEl = e.target.closest('.file-item');
         if (itemEl) {
             const idx = parseInt(itemEl.dataset.index, 10);
@@ -211,7 +393,93 @@ FAR.WM._mountExplorerPanel = async function (win, props) {
                 }
             }
         }
+
         FAR.WM._showExplorerContextMenu(e.clientX, e.clientY, win, side);
+    }, true);
+
+    // Drag & drop: НАЧАЛО перетаскивания из этого окна.
+    panelHost.addEventListener('mousedown', function (e) {
+        if (e.button !== 0) return;
+        const itemEl = e.target.closest('.file-item');
+        if (!itemEl) return;
+
+        const idx = parseInt(itemEl.dataset.index, 10);
+        if (isNaN(idx) || idx < 0) return;
+
+        const startX = e.clientX;
+        const startY = e.clientY;
+        let dragging = false;
+
+        const onMove = function (ev) {
+            const dx = ev.clientX - startX;
+            const dy = ev.clientY - startY;
+            if (!dragging && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+                dragging = true;
+                FAR.activePanel = side;
+                const ctx = FAR.side[side];
+                const selSet = ctx.selectedIdx;
+                if (!selSet.has(idx)) {
+                    selSet.clear();
+                    selSet.add(idx);
+                    ctx.anchor = idx;
+                    ctx.cursor = idx;
+                    FAR.renderPanel(side);
+                }
+                FAR.WM._beginDragFromExplorer(win, side, ev.clientX, ev.clientY);
+            }
+            if (dragging) {
+                FAR.WM._updateDragGhost(ev.clientX, ev.clientY);
+                FAR.WM._updateDropTargetUnderCursor(ev.clientX, ev.clientY, win.id);
+            }
+        };
+
+        const onUp = function () {
+            document.removeEventListener('mousemove', onMove, true);
+            document.removeEventListener('mouseup', onUp);
+
+            if (dragging) {
+                if (FAR.WM._dragPayload) {
+                    FAR.WM._endDrag();
+                    FAR.setStatus('');
+                }
+            }
+        };
+
+        document.addEventListener('mousemove', onMove, true);
+        document.addEventListener('mouseup', onUp);   // bubble
+    });
+
+    // Drag & drop: ПРИЁМ файлов из другого окна.
+    panelHost.addEventListener('mouseup', function (e) {
+        if (!FAR.WM._dragPayload) return;
+        if (FAR.WM._dragPayload.sourceWinId === win.id) return;
+
+        const rect = panelHost.getBoundingClientRect();
+        if (e.clientX < rect.left || e.clientX > rect.right ||
+            e.clientY < rect.top  || e.clientY > rect.bottom) return;
+
+        const payload = FAR.WM._dragPayload;
+        if (e.shiftKey) payload.mode = 'move';
+        else payload.mode = 'copy';
+
+        FAR.WM._performDrop(win, side);
+    });
+};
+
+FAR.WM._updateDropTargetUnderCursor = function (x, y, sourceWinId) {
+    FAR.WM.state.windows.forEach(function (w) {
+        if (w.appId !== 'explorer') return;
+        if (w.id === sourceWinId) return;
+
+        const rect = w.el.getBoundingClientRect();
+        const isInside = x >= rect.left && x <= rect.right &&
+            y >= rect.top  && y <= rect.bottom;
+
+        if (isInside && FAR.WM._dragPayload) {
+            w.el.classList.add('wm-drop-target-hover');
+        } else {
+            w.el.classList.remove('wm-drop-target-hover');
+        }
     });
 };
 
@@ -246,6 +514,13 @@ FAR.WM._explorerNavigate = async function (win, side, targetPath) {
 FAR.WM._showExplorerContextMenu = function (x, y, win, side) {
     const menu = document.getElementById('wmContextMenu');
     if (!menu) return;
+
+    // ВАЖНО: поднимаем меню выше всех окон WM.
+    // У окон z-index растёт от 6000. Простое значение 99999
+    // перекрывает любое окно, даже с максимальным zTop.
+    menu.style.position = 'fixed';
+    menu.style.zIndex = '99999';
+
     menu.innerHTML = '';
 
     const selSet = FAR.side[side].selectedIdx;
@@ -257,7 +532,8 @@ FAR.WM._showExplorerContextMenu = function (x, y, win, side) {
         el.className = 'wm-ctx-item' + (enabled ? '' : ' disabled');
         el.textContent = label;
         if (enabled) {
-            el.addEventListener('click', function () {
+            el.addEventListener('click', function (ev) {
+                ev.stopPropagation();
                 FAR.WM._hideContextMenu();
                 try { onClick(); } catch (e) {
                     console.error('[WM explorer ctx]', e);
@@ -327,7 +603,7 @@ FAR.WM._cloneFarPanelInto = function (host, side) {
 };
 
 // ============================================================
-// Оконные просмотрщики (собственные, независимые)
+// Оконные просмотрщики
 // ============================================================
 
 FAR.WM._finalizeViewer = function (win) {
@@ -402,7 +678,7 @@ FAR.WM._trackBlobUrl = function (win, url) {
     win.props._blobUrls.push(url);
 };
 
-// ---- Универсальный просмотрщик (картинки, текст, hex) ----
+// ---- Универсальный просмотрщик ----
 
 FAR.WM._mountFileViewer = async function (win, props) {
     const item = props.file;
@@ -1543,6 +1819,180 @@ FAR.WM._installOpenFileWrapper = function () {
             console.warn('[WM openFile] проверка типа:', e);
         }
         return FAR.WM.openApp('viewer', { props: { file: item, side: side } });
+    };
+};
+// ============================================================
+// Файл: js/45-wm-bridge.js
+// Функция: FAR.WM._openExplorerConnDialog (новая)
+// ============================================================
+//
+// Открывает модальное окно WM с формой подключения для ОДНОЙ
+// панели. После успешного подключения:
+//   • применяет конфиг ТОЛЬКО к указанной стороне;
+//   • сохраняет в localStorage (side-specific ключ);
+//   • перезагружает корень этой панели;
+//   • перерисовывает все окна Проводника, которые смотрят
+//     на эту сторону (обычно одно).
+//
+// Классический режим не затрагивается — там своя модалка
+// через FAR.openConnModal, и она работает по-прежнему.
+
+FAR.WM._openExplorerConnDialog = function (parentWin, side) {
+    if (!side) return;
+
+    const dialogWin = FAR.WM.openWindow({
+        title: '🔐 Подключение панели (' +
+            (side === 'left' ? 'Левая' : 'Правая') + ')',
+        icon: '🗄️',
+        width: 480,
+        height: 540,
+        appId: 'conn-side-' + side,
+        modal: true,
+        parentId: parentWin ? parentWin.id : null,
+        props: { side: side }
+    });
+
+    FAR.WM._mountSideConnUI(dialogWin, side);
+};
+
+// ============================================================
+// Файл: js/45-wm-bridge.js
+// Функция: FAR.WM._mountSideConnUI (новая)
+// ============================================================
+//
+// Форма подключения для одной панели. Похожа на
+// _mountConnectionUI (обе панели), но применяет конфиг
+// только к одной стороне.
+
+FAR.WM._mountSideConnUI = function (win, side) {
+    win.bodyEl.innerHTML =
+        '<div style="padding:20px;background:#1e1e2e;color:#cdd6f4;height:100%;box-sizing:border-box;overflow:auto;">' +
+        '<div style="display:flex;flex-direction:column;gap:12px;">' +
+        '<div style="padding:8px 10px;background:#313244;border-left:3px solid #89b4fa;border-radius:4px;font-size:13px;color:#cdd6f4;">' +
+        'Подключение только для панели: <b style="color:#89b4fa;">' +
+        (side === 'left' ? 'Левая' : 'Правая') +
+        '</b></div>' +
+        '<label style="font-size:12px;color:#a6adc8;">Адрес БД<input data-role="url" type="text" style="width:100%;margin-top:4px;padding:8px;background:#313244;border:1px solid #45475a;border-radius:5px;color:#cdd6f4;font-family:monospace;"></label>' +
+        '<label style="font-size:12px;color:#a6adc8;">Имя БД<input data-role="db" type="text" style="width:100%;margin-top:4px;padding:8px;background:#313244;border:1px solid #45475a;border-radius:5px;color:#cdd6f4;font-family:monospace;"></label>' +
+        '<label style="font-size:12px;color:#a6adc8;">Пользователь<input data-role="user" type="text" style="width:100%;margin-top:4px;padding:8px;background:#313244;border:1px solid #45475a;border-radius:5px;color:#cdd6f4;font-family:monospace;"></label>' +
+        '<label style="font-size:12px;color:#a6adc8;">Пароль<input data-role="pass" type="password" style="width:100%;margin-top:4px;padding:8px;background:#313244;border:1px solid #45475a;border-radius:5px;color:#cdd6f4;font-family:monospace;"></label>' +
+        '<div data-role="error" style="color:#f38ba8;font-size:12px;min-height:16px;"></div>' +
+        '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">' +
+        '<button data-role="cancel" style="padding:8px 18px;background:#585b70;color:#cdd6f4;border:none;border-radius:5px;cursor:pointer;">Отмена</button>' +
+        '<button data-role="connect" style="padding:8px 18px;background:#a6e3a1;color:#1e1e2e;border:none;border-radius:5px;cursor:pointer;font-weight:bold;">Подключиться</button>' +
+        '</div>' +
+        '</div>' +
+        '</div>';
+
+    const urlEl    = win.bodyEl.querySelector('[data-role="url"]');
+    const dbEl     = win.bodyEl.querySelector('[data-role="db"]');
+    const userEl   = win.bodyEl.querySelector('[data-role="user"]');
+    const passEl   = win.bodyEl.querySelector('[data-role="pass"]');
+    const errEl    = win.bodyEl.querySelector('[data-role="error"]');
+    const cancelBtn  = win.bodyEl.querySelector('[data-role="cancel"]');
+    const connectBtn = win.bodyEl.querySelector('[data-role="connect"]');
+
+    // Предзаполняем из текущего контекста панели или LS
+    const ctx = FAR.side[side];
+    let def = null;
+    if (ctx && ctx.conn) {
+        def = ctx.conn;
+    } else if (typeof FAR.getConnDefaultsForSide === 'function') {
+        def = FAR.getConnDefaultsForSide(side);
+    } else if (typeof FAR.getDefaultConn === 'function') {
+        def = FAR.getDefaultConn();
+    }
+    if (!def) def = { url: '', db: '', user: '', pass: '' };
+
+    urlEl.value  = def.url  || '';
+    dbEl.value   = def.db   || '';
+    userEl.value = def.user || '';
+    passEl.value = def.pass || '';
+
+    cancelBtn.onclick = function () {
+        FAR.WM.closeWindow(win.id);
+    };
+
+    connectBtn.onclick = async function () {
+        const cfg = {
+            url:  urlEl.value.trim(),
+            db:   dbEl.value.trim(),
+            user: userEl.value.trim(),
+            pass: passEl.value
+        };
+        if (!cfg.url || !cfg.db) {
+            errEl.textContent = 'Укажите URL и имя БД';
+            return;
+        }
+
+        connectBtn.disabled = true;
+        connectBtn.textContent = 'Подключение…';
+        errEl.textContent = '';
+
+        let res;
+        try {
+            res = await FAR.connectToDb(cfg);
+        } catch (e) {
+            errEl.textContent = '❌ ' + (e.message || String(e));
+            connectBtn.disabled = false;
+            connectBtn.textContent = 'Подключиться';
+            return;
+        }
+
+        // ============================================================
+        // Применяем конфиг ТОЛЬКО к указанной стороне.
+        // applyConnectionToSide перезатрёт:
+        //   s.db, s.conn, s.fullUrl, s.fileIndex, s.path, s.files,
+        //   s.cursor, s.selectedIdx, s.anchor, s.loading
+        // ============================================================
+        try {
+            FAR.applyConnectionToSide(side, cfg, res.db, res.fullUrl);
+        } catch (e) {
+            console.error('[WM conn] applyConnectionToSide failed:', e);
+            errEl.textContent = '❌ Не удалось применить подключение: ' + e.message;
+            connectBtn.disabled = false;
+            connectBtn.textContent = 'Подключиться';
+            return;
+        }
+
+        // Сохраняем side-specific конфиг
+        try {
+            if (typeof FAR.saveSideConnToLS === 'function') {
+                FAR.saveSideConnToLS(side, cfg);
+            }
+        } catch (e) { /* ignore */ }
+
+        // Если у нас активна эта панель — обновим Auth UI и статус
+        FAR.updateAuthUI();
+        FAR.setStatus('✅ Панель «' + (side === 'left' ? 'Левая' : 'Правая') +
+            '» подключена: ' + res.fullUrl);
+        FAR.toast('Панель подключена к ' + cfg.db, 'success');
+
+        // Загружаем корень панели
+        try {
+            await FAR.loadFilesForSide(side, { path: '/', silent: true });
+        } catch (e) {
+            console.warn('[WM conn] loadFilesForSide failed:', e);
+        }
+
+        // Перерисовываем панель — попадёт в клон окна Проводника
+        try {
+            FAR.renderPanel(side);
+        } catch (e) { /* ignore */ }
+
+        // Обновляем трей (там показывается текущая БД активной панели)
+        if (typeof FAR.WM.updateTray === 'function') {
+            FAR.WM.updateTray();
+        }
+
+        // Обновляем индикаторы подключения (на случай если
+        // они где-то используются в DOM вне WM)
+        if (typeof FAR.updateConnIndicators === 'function') {
+            FAR.updateConnIndicators();
+        }
+
+        // Закрываем диалог
+        FAR.WM.closeWindow(win.id);
     };
 };
 
