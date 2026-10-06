@@ -347,6 +347,7 @@ FAR.WM._mountMp3Player = async function (win, props) {
         selectedIdxs: new Set(),
         anchorIdx: -1
     };
+
     win.props._audio = null;
     win.props._blobUrls = win.props._blobUrls || [];
     win.props._mp3State = S;
@@ -725,7 +726,6 @@ FAR.WM._mountMp3Player = async function (win, props) {
     const addTrackByPath = function (path, name) {
         const norm = FAR.normPath(path);
         if (!norm) return false;
-        if (S.playlist.some(function (e) { return FAR.normPath(e.path) === norm; })) return false;
         S.playlist.push({
             path: norm,
             name: name || norm.split('/').pop(),
@@ -745,12 +745,9 @@ FAR.WM._mountMp3Player = async function (win, props) {
             FAR.toast('Выбранный файл — не аудио', 'warning');
             return;
         }
-        if (addTrackByPath(picked.path, picked.name)) {
-            renderPlaylist();
-            FAR.toast('Добавлено: ' + picked.name, 'success');
-        } else {
-            FAR.toast('Уже в плейлисте', 'info');
-        }
+        addTrackByPath(picked.path, picked.name);
+        renderPlaylist();
+        FAR.toast('Добавлено: ' + picked.name, 'success');
     };
 
     const addDirDialog = async function () {
@@ -835,6 +832,7 @@ FAR.WM._mountMp3Player = async function (win, props) {
             else if (Array.isArray(data)) tracks = data;
             else throw new Error('Файл не является плейлистом');
 
+            // ---- 1. Заменяем плейлист содержимым .fbmp3 ----
             S.playlist = [];
             S.currentIdx = -1;
             S.selectedIdxs.clear();
@@ -930,17 +928,11 @@ FAR.WM._mountMp3Player = async function (win, props) {
 
                     for (const t of tracks) {
                         if (typeof t === 'string') {
-                            if (addTrackByPath(t, t.split('/').pop())) {
-                                totalAdded++;
-                            } else {
-                                skipped++;
-                            }
+                            addTrackByPath(t, t.split('/').pop());
+                            totalAdded++;
                         } else if (t && typeof t === 'object' && t.path) {
-                            if (addTrackByPath(t.path, t.name || t.path.split('/').pop())) {
-                                totalAdded++;
-                            } else {
-                                skipped++;
-                            }
+                            addTrackByPath(t.path, t.name || t.path.split('/').pop());
+                            totalAdded++;
                         }
                     }
                     playlistsExpanded++;
@@ -953,11 +945,8 @@ FAR.WM._mountMp3Player = async function (win, props) {
             }
 
             if (FAR.isMp3(item)) {
-                if (addTrackByPath(item.path, item.name)) {
-                    totalAdded++;
-                } else {
-                    skipped++;
-                }
+                addTrackByPath(item.path, item.name);
+                totalAdded++;
                 continue;
             }
 
@@ -1189,29 +1178,56 @@ FAR.WM._mountMp3Player = async function (win, props) {
             const filePath = FAR.normPath(fileItem.path);
             if (!filePath) return;
 
-            const dir = filePath.includes('/')
-                ? filePath.substring(0, filePath.lastIndexOf('/'))
-                : '';
-            try {
-                const children = await FAR.listDirFromSide(side, dir, { includeDocs: true });
-                for (const it of children) {
-                    if (!it.isFolder && FAR.isMp3(it)) {
-                        addTrackByPath(it.path, it.name);
-                    }
-                }
-            } catch (e) { /* ignore */ }
+            const startLen = S.playlist.length;
 
-            if (!S.playlist.some(function (e) {
+            // Если файл УЖЕ есть в плейлисте — считаем это
+            // повторным открытием и добавляем ТОЛЬКО сам файл
+            // (получается дубликат). Если файла ещё нет — первое
+            // открытие: добавляем все mp3 из папки + сам файл.
+            const alreadyInList = S.playlist.some(function (e) {
                 return FAR.normPath(e.path) === filePath;
-            })) {
+            });
+
+            if (!alreadyInList) {
+                const dir = filePath.includes('/')
+                    ? filePath.substring(0, filePath.lastIndexOf('/'))
+                    : '';
+                try {
+                    const children = await FAR.listDirFromSide(side, dir, { includeDocs: true });
+                    for (const it of children) {
+                        if (!it.isFolder && FAR.isMp3(it)) {
+                            addTrackByPath(it.path, it.name);
+                        }
+                    }
+                } catch (e) { /* ignore */ }
+            } else {
+                // Дубликат: добавляем только сам файл
+                addTrackByPath(filePath, fileItem.name || filePath.split('/').pop());
+            }
+
+            // На всякий случай: если файл не попал ни из папки,
+            // ни явно — добавляем.
+            let found = false;
+            for (let i = startLen; i < S.playlist.length; i++) {
+                if (FAR.normPath(S.playlist[i].path) === filePath) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
                 addTrackByPath(filePath, fileItem.name || filePath.split('/').pop());
             }
 
             renderPlaylist();
 
-            const idx = S.playlist.findIndex(function (e) {
-                return FAR.normPath(e.path) === filePath;
-            });
+            // Играем последний добавленный экземпляр файла
+            let idx = -1;
+            for (let i = S.playlist.length - 1; i >= startLen; i--) {
+                if (FAR.normPath(S.playlist[i].path) === filePath) {
+                    idx = i;
+                    break;
+                }
+            }
             if (idx >= 0) loadTrack(idx);
         },
 
@@ -1238,6 +1254,8 @@ FAR.WM._mountMp3Player = async function (win, props) {
     } else if (props.file && FAR.WM.isFbmp3(props.file)) {
         await loadPlaylistFromPath(props.file.path);
     } else if (props.file && FAR.isMp3(props.file)) {
+        // Первое открытие плеера с mp3-файлом:
+        // добавляем все mp3 из папки и запускаем выбранный.
         const dir = FAR.normPath(props.file.path).includes('/')
             ? FAR.normPath(props.file.path).substring(0, FAR.normPath(props.file.path).lastIndexOf('/'))
             : '';
@@ -1250,12 +1268,20 @@ FAR.WM._mountMp3Player = async function (win, props) {
             }
         } catch (e) { /* ignore */ }
 
-        if (!S.playlist.some(e => FAR.normPath(e.path) === FAR.normPath(props.file.path))) {
-            addTrackByPath(props.file.path, props.file.name);
+        // Страховка: если файл не попал из папки — добавляем явно
+        let curIdx = -1;
+        for (let i = 0; i < S.playlist.length; i++) {
+            if (FAR.normPath(S.playlist[i].path) === FAR.normPath(props.file.path)) {
+                curIdx = i;
+                break;
+            }
         }
-        renderPlaylist();
+        if (curIdx < 0) {
+            addTrackByPath(props.file.path, props.file.name);
+            curIdx = S.playlist.length - 1;
+        }
 
-        const curIdx = S.playlist.findIndex(e => FAR.normPath(e.path) === FAR.normPath(props.file.path));
+        renderPlaylist();
         if (curIdx >= 0) loadTrack(curIdx);
     } else {
         renderPlaylist();
