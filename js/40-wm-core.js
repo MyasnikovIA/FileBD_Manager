@@ -318,6 +318,11 @@ FAR.WM.getActiveWindow = function () {
 // Фокус / z-index
 // ============================================================
 
+// ============================================================
+// Файл: js/40-wm-core.js
+// Функция: FAR.WM.focusWindow (полный листинг)
+// ============================================================
+
 FAR.WM.focusWindow = function (id) {
     const win = FAR.WM.getWindow(id);
     if (!win) return;
@@ -347,6 +352,32 @@ FAR.WM.focusWindow = function (id) {
 
     FAR.WM.state.activeWindowId = id;
     FAR.WM._renderTaskbar();
+
+    // ============================================================
+    // Синхронизация активной панели с окном Проводника.
+    //
+    // Когда пользователь кликает на окно Проводника,
+    // показывающее сторону 'left' или 'right', глобальная
+    // FAR.activePanel должна указывать на ту же сторону.
+    //
+    // Иначе клавиатурные стрелки (обработчик из 22-keyboard.js
+    // двигает курсор в FAR.side[FAR.activePanel]) будут
+    // срабатывать не в том окне.
+    // ============================================================
+    if (win.appId === 'explorer' && win.props && win.props.side) {
+        FAR.activePanel = win.props.side;
+
+        // Синхронизируем подсветку классических панелей
+        // (на случай, если WM-режим выключится — не запутаться)
+        try {
+            const pl = document.getElementById('panelLeft');
+            const pr = document.getElementById('panelRight');
+            if (pl && pr) {
+                pl.classList.toggle('active', FAR.activePanel === 'left');
+                pr.classList.toggle('active', FAR.activePanel === 'right');
+            }
+        } catch (e) { /* ignore */ }
+    }
 
     // Сообщаем приложению — оно может захотеть сфокусировать поле
     if (typeof win.props.onFocus === 'function') {
