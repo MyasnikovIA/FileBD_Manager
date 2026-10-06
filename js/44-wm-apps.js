@@ -27,6 +27,11 @@ FAR.WM.getApp = function (id) {
     return FAR.WM._apps[id] || null;
 };
 
+// ============================================================
+// Файл: js/44-wm-apps.js
+// Функция: FAR.WM.openApp (полный листинг)
+// ============================================================
+
 FAR.WM.openApp = async function (appId, opts) {
     opts = opts || {};
     const def = FAR.WM.getApp(appId);
@@ -35,10 +40,12 @@ FAR.WM.openApp = async function (appId, opts) {
         return null;
     }
 
-    // Singleton — если окно уже открыто, фокусируем.
-    // НО: при восстановлении (_restoring) singleton
-    // игнорируем — пользователь мог закрыть и открыть,
-    // или иметь несколько окон одного приложения.
+    // Singleton — если окно уже открыто, фокусируем его и
+    // вызываем onReopen (если приложение поддерживает).
+    //
+    // Это критично для MP3-плеера: без onReopen новый файл,
+    // открытый через Проводник, попадал бы «в никуда» —
+    // окно просто получало фокус, а playlist не менялся.
     if (def.singleton && !opts.forceNew && !opts._restoring) {
         const existing = FAR.WM.state.windows.find(function (w) {
             return w.appId === appId;
@@ -46,6 +53,14 @@ FAR.WM.openApp = async function (appId, opts) {
         if (existing) {
             FAR.WM.restoreWindow(existing.id);
             FAR.WM.focusWindow(existing.id);
+
+            if (typeof def.onReopen === 'function' && opts.props) {
+                try {
+                    def.onReopen(existing, opts.props);
+                } catch (e) {
+                    console.warn('[WM app onReopen]', appId, e);
+                }
+            }
             return existing;
         }
     }
