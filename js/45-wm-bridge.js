@@ -19,6 +19,7 @@
 //     своим окном.
 
 FAR.WM._orig = FAR.WM._orig || {};
+FAR.WM.PICKER_LAST_DIR = 'filebd_wm_picker_last_dir';
 
 // ============================================================
 // Drag&drop между окнами Проводника
@@ -1788,7 +1789,7 @@ FAR.WM.openFileDialog = function (opts) {
 FAR.WM._mountFileDialog = async function (win, side, opts) {
     return new Promise(function (resolve) {
 
-        // ---- Установка ключевого обработчика (нужна для cleanup) ----
+        // ---- Установка key-обработчика (для cleanup) ----
         let onKeyDown = null;
 
         const removeKeyListener = function () {
@@ -1798,7 +1799,6 @@ FAR.WM._mountFileDialog = async function (win, side, opts) {
             onKeyDown = null;
         };
 
-        // При закрытии окна (в т.ч. force=true) — снимаем слушатель.
         const origOnClose = win.onClose;
         win.onClose = function (w) {
             removeKeyListener();
@@ -1851,26 +1851,45 @@ FAR.WM._mountFileDialog = async function (win, side, opts) {
         const cancelBtn = colPreview.querySelector('[data-role="cancel"]');
 
         // ============================================================
+        // Запоминание последнего каталога
+        // ============================================================
+        const saveLastDir = function (path) {
+            try {
+                localStorage.setItem(FAR.WM.PICKER_LAST_DIR, '/' + FAR.normPath(path));
+            } catch (e) { /* ignore */ }
+        };
+
+        const loadLastDir = function () {
+            try {
+                return localStorage.getItem(FAR.WM.PICKER_LAST_DIR) || '';
+            } catch (e) {
+                return '';
+            }
+        };
+
+        const clearLastDir = function () {
+            try { localStorage.removeItem(FAR.WM.PICKER_LAST_DIR); } catch (e) {}
+        };
+
+        // ============================================================
         // Helpers
         // ============================================================
 
-        // Отфильтрованный список — то, что реально видно в панели.
         const getVisible = function () {
             let items = state.items.slice();
             if (state.filter) {
                 const q = state.filter.toLowerCase();
                 items = items.filter(function (it) {
-                    if (it.isFolder) return true;   // папки и «..» не фильтруем
+                    if (it.isFolder) return true;
                     return it.name.toLowerCase().indexOf(q) !== -1;
                 });
             }
             return items;
         };
 
-        // Переход в родительский каталог ВНУТРИ БД.
         const goUp = function () {
             const cur = FAR.normPath(state.path);
-            if (!cur) return;   // уже в корне
+            if (!cur) return;
             const parts = cur.split('/').filter(Boolean);
             parts.pop();
             const parent = parts.length ? '/' + parts.join('/') : '/';
@@ -1947,8 +1966,10 @@ FAR.WM._mountFileDialog = async function (win, side, opts) {
         // ============================================================
         // Загрузка каталога из БД
         // ============================================================
-        const loadDir = async function (path) {
-            state.path = '/' + FAR.normPath(path);
+        const loadDir = async function (path, opts) {
+            opts = opts || {};
+            const norm = FAR.normPath(path);
+            state.path = '/' + norm;
             state.cursor = -1;
             state.selected = null;
             okBtn.disabled = true;
@@ -1957,26 +1978,26 @@ FAR.WM._mountFileDialog = async function (win, side, opts) {
             listEl.innerHTML = '<div style="padding:20px;text-align:center;color:#6c7086;">Загрузка…</div>';
 
             try {
-                const children = await FAR.listDirFromSide(state.side, FAR.normPath(path), { includeDocs: true });
+                const children = await FAR.listDirFromSide(state.side, norm, { includeDocs: true });
 
                 state.items = children.map(function (it) {
                     if (it.docType === 'folder' || it.isFolder) {
-                        return { isFolder: true, name: it.name, path: it.path, size: 0 };
+                        return Object.assign({}, it, {
+                            isFolder: true,
+                            size: 0
+                        });
                     }
                     const ext = (it.name.split('.').pop() || '').toLowerCase();
                     const isImage = ['jpg','jpeg','png','webp','gif','bmp','svg'].indexOf(ext) !== -1;
-                    return {
+                    return Object.assign({}, it, {
                         isFolder: false,
-                        name: it.name,
-                        path: it.path,
                         size: it.size || 0,
                         isImage: isImage,
                         _item: it
-                    };
+                    });
                 });
 
-                // «..» — только если не в корне.
-                if (FAR.normPath(path) !== '') {
+                if (norm !== '') {
                     state.items.unshift({
                         isFolder: true,
                         name: '..',
@@ -1986,10 +2007,34 @@ FAR.WM._mountFileDialog = async function (win, side, opts) {
                     });
                 }
 
-                // Курсор — на первый элемент.
                 state.cursor = getVisible().length > 0 ? 0 : -1;
                 render();
+
+                // ============================================================
+                // Сохраняем каталог как «последний использованный»,
+                // ТОЛЬКО если это не откат (флаг fromFallback).
+                // ============================================================
+                if (!opts.fromFallback) {
+                    saveLastDir(norm);
+                }
             } catch (e) {
+                // ============================================================
+                // Если мы пытались открыть сохранённый каталог и он
+                // больше не существует (404, БД сменилась, папка
+                // удалена и т.п.) — откатываемся в корень и чистим
+                // сохранённое значение.
+                // ============================================================
+                if (opts.attemptedRestore && norm !== '') {
+                    console.warn('[WM picker] сохранённый каталог недоступен:', norm, e.message);
+                    clearLastDir();
+                    // Откат в корень. Флаг fromFallback=true, чтобы
+                    // не записать '/' в localStorage как «выбор
+                    // пользователя» — пусть при следующем открытии
+                    // снова попробует восстановить (но там уже
+                    // ничего не будет).
+                    return loadDir('/', { fromFallback: true });
+                }
+
                 listEl.innerHTML = '<div style="padding:20px;color:#f38ba8;">Ошибка: ' + FAR.escapeHtml(e.message) + '</div>';
             }
         };
@@ -2011,7 +2056,7 @@ FAR.WM._mountFileDialog = async function (win, side, opts) {
                 return;
             }
             try {
-                const r = await FAR.readFileBodyFromSide(state.side, item._item);
+                const r = await FAR.readFileBodyFromSide(state.side, item);
                 const blob = new Blob([r.data], { type: r.contentType || 'image/jpeg' });
                 const url = URL.createObjectURL(blob);
                 state.previewUrl = url;
@@ -2036,19 +2081,8 @@ FAR.WM._mountFileDialog = async function (win, side, opts) {
         // ============================================================
         // Клавиатура
         // ============================================================
-        // Обработчик в capture-фазе на document, чтобы обогнать
-        // глобальный обработчик из 22-keyboard.js (тот слушает
-        // в bubble-фазе) и НЕ дать стрелкам уйти в панель FAR.
-        //
-        // Реагируем ТОЛЬКО если наше окно — активное (иначе при
-        // нескольких открытых окнах клавиши уйдут не туда).
         onKeyDown = function (e) {
-            // Не наше окно активно — молча выходим, пусть решает
-            // тот, кто реально сверху.
             if (FAR.WM.state.activeWindowId !== win.id) return;
-
-            // Страховка: окно уже закрыто (был force close),
-            // но listener ещё висит — снимаем.
             if (!FAR.WM.getWindow(win.id)) {
                 removeKeyListener();
                 return;
@@ -2057,7 +2091,6 @@ FAR.WM._mountFileDialog = async function (win, side, opts) {
             const inFilter = (e.target === filterEl);
             const visible = getVisible();
 
-            // Escape — закрыть в любом случае, даже из фильтра.
             if (e.key === 'Escape') {
                 e.preventDefault();
                 e.stopPropagation();
@@ -2065,8 +2098,6 @@ FAR.WM._mountFileDialog = async function (win, side, opts) {
                 return;
             }
 
-            // Внутри поля фильтра: набор текста идёт в поле,
-            // Enter — подтверждение, остальное пропускаем.
             if (inFilter) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
@@ -2164,13 +2195,23 @@ FAR.WM._mountFileDialog = async function (win, side, opts) {
 
         document.addEventListener('keydown', onKeyDown, true);
 
-        // Фокус на список, чтобы клавиши приходили внутрь диалога.
         setTimeout(function () {
             try { listEl.focus(); } catch (e) {}
         }, 50);
 
-        // Первая загрузка.
-        loadDir('/');
+        // ============================================================
+        // Первая загрузка: попытка восстановить последний каталог.
+        //
+        // Если сохранённого пути нет — открываем корень как обычно.
+        // Если путь есть — пытаемся в него войти, и при ошибке
+        // loadDir сам откатится в '/' и очистит ключ.
+        // ============================================================
+        const lastDir = loadLastDir();
+        if (lastDir && FAR.normPath(lastDir) !== '') {
+            loadDir(lastDir, { attemptedRestore: true });
+        } else {
+            loadDir('/', { fromFallback: false });
+        }
     });
 };
 

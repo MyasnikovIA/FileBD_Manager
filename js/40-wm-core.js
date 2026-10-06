@@ -733,6 +733,7 @@ FAR.WM.saveMode = function (mode) {
 FAR.WM.clearMode = function () {
     try { localStorage.removeItem(FAR.WM.LS_MODE_KEY); } catch (e) {}
     try { FAR.WM.clearWindowState(); } catch (e) {}
+    try { localStorage.removeItem(FAR.WM.PICKER_LAST_DIR); } catch (e) {}
 };
 
 /**
