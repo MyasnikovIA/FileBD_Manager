@@ -12,9 +12,8 @@ FAR.WM.DESKTOP_DEFAULT = [
     { id: 'pdf',       x: 20,  y: 350 },
     { id: 'mp3',       x: 20,  y: 460 },
     { id: 'video',     x: 130, y: 20  },
-    { id: 'dbpick',    x: 130, y: 130 },
-    { id: 'connect',   x: 130, y: 240 },
-    { id: 'debug',     x: 130, y: 350 }
+    { id: 'connect',   x: 130, y: 130 },
+    { id: 'debug',     x: 130, y: 240 }
 ];
 
 FAR.WM._loadDesktopIcons = function () {
@@ -35,14 +34,36 @@ FAR.WM._saveDesktopIcons = function (list) {
     } catch (e) { /* ignore */ }
 };
 
+// ============================================================
+// Файл: js/43-wm-desktop.js
+// Функция: FAR.WM._renderDesktopIcons (полный листинг)
+// ============================================================
+
 FAR.WM._renderDesktopIcons = function () {
     const container = document.getElementById('wmDesktopIcons');
     if (!container) return;
+
+    // Иконки, которые НЕ должны появляться на рабочем столе,
+    // даже если они сохранены в localStorage от старых версий.
+    // 'dbpick' — диалог выбора файла, открывается только
+    // программно из других приложений.
+    const HIDDEN_ON_DESKTOP = { 'dbpick': true };
 
     let layout = FAR.WM._loadDesktopIcons();
     if (!layout) {
         layout = FAR.WM.DESKTOP_DEFAULT.slice();
         FAR.WM._saveDesktopIcons(layout);
+    } else {
+        // Фильтруем сохранённый layout: убираем скрытые иконки.
+        // Если что-то убрали — сохраняем почищенный вариант,
+        // чтобы при следующей загрузке не делать этого снова.
+        const filtered = layout.filter(function (entry) {
+            return entry && entry.id && !HIDDEN_ON_DESKTOP[entry.id];
+        });
+        if (filtered.length !== layout.length) {
+            layout = filtered;
+            FAR.WM._saveDesktopIcons(layout);
+        }
     }
 
     container.innerHTML = '';
@@ -50,6 +71,9 @@ FAR.WM._renderDesktopIcons = function () {
     layout.forEach(function (entry, idx) {
         const app = FAR.WM.getApp ? FAR.WM.getApp(entry.id) : null;
         if (!app) return;
+        // Ещё одна страховка: даже если каким-то чудом
+        // скрытый id попал в layout — не рисуем.
+        if (HIDDEN_ON_DESKTOP[entry.id]) return;
 
         const el = document.createElement('div');
         el.className = 'wm-desktop-icon';

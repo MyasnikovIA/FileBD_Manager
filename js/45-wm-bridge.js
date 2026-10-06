@@ -178,6 +178,11 @@ FAR.WM._performDrop = async function (targetWin, targetSide) {
 // Функция: FAR.WM._mountExplorerPanel (полный листинг)
 // ============================================================
 
+// ============================================================
+// Файл: js/45-wm-bridge.js
+// Функция: FAR.WM._mountExplorerPanel (полный листинг)
+// ============================================================
+
 FAR.WM._mountExplorerPanel = async function (win, props) {
     const used = FAR.WM.state.windows
         .filter(w => w.appId === 'explorer' && w.id !== win.id)
@@ -210,6 +215,28 @@ FAR.WM._mountExplorerPanel = async function (win, props) {
     panelHost.style.cssText = 'flex:1; min-height:0; display:flex; overflow:hidden; position:relative;';
     win.bodyEl.appendChild(panelHost);
 
+    // ============================================================
+    // Оверлей для приёма файлов из ОС.
+    // Скрыт по умолчанию, показывается при dragenter с файлами,
+    // скрывается при dragleave или drop.
+    // ============================================================
+    const dropOverlay = document.createElement('div');
+    dropOverlay.className = 'wm-explorer-drop-overlay';
+    dropOverlay.style.cssText =
+        'position:absolute; inset:0; pointer-events:none; ' +
+        'background:rgba(166,227,161,0.10); ' +
+        'border:3px dashed #a6e3a1; border-radius:6px; ' +
+        'display:none; align-items:center; justify-content:center; ' +
+        'flex-direction:column; gap:10px; ' +
+        'color:#a6e3a1; font-size:15px; font-weight:bold; z-index:10;';
+    dropOverlay.innerHTML =
+        '<div style="font-size:48px;">📥</div>' +
+        '<div>Отпустите, чтобы загрузить в</div>' +
+        '<div data-role="droppath" style="font-family:monospace;font-size:12px;' +
+        'color:#cdd6f4;background:rgba(0,0,0,0.4);padding:4px 12px;border-radius:5px;' +
+        'max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>';
+    panelHost.appendChild(dropOverlay);
+
     const renderPathBar = function () {
         const c = FAR.side[side];
         const norm = FAR.normPath(c.path);
@@ -218,30 +245,33 @@ FAR.WM._mountExplorerPanel = async function (win, props) {
 
         pathBar.innerHTML = '';
 
-        // ============================================================
-        // Кнопка смены БД для этой панели (новая).
-        // Открывает диалог подключения, привязанный ТОЛЬКО к side.
-        // Классический режим не затрагивается — там по-прежнему
-        // работает клик по шапке панели.
-        // ============================================================
+        // Бейдж текущей БД (информационный, не кликабельный)
+        const dbBadge = document.createElement('span');
+        dbBadge.textContent = '🗄️ ' + dbLabel;
+        dbBadge.title = 'Текущая БД этой панели: ' + dbLabel;
+        dbBadge.style.cssText =
+            'color:#89b4fa; padding:2px 8px; background:#1a1a2a; ' +
+            'border-radius:3px; flex-shrink:0; ' +
+            'font-family:monospace; font-size:12px;';
+        pathBar.appendChild(dbBadge);
+
+        // Кнопка смены БД для этой панели
         const dbBtn = document.createElement('button');
         dbBtn.className = 'wm-explorer-db-btn';
         dbBtn.type = 'button';
-        dbBtn.textContent = '🗄️ ' + dbLabel;
-        dbBtn.title = 'Сменить БД для этой панели (текущая: ' + dbLabel + ')';
+        dbBtn.textContent = '⇄ Сменить БД';
+        dbBtn.title = 'Подключить эту панель к другой БД';
         dbBtn.style.cssText =
-            'color:#89b4fa; padding:2px 10px; background:#1a1a2a; ' +
-            'border:1px solid #2b2b3c; border-radius:3px; ' +
-            'margin-right:6px; flex-shrink:0; cursor:pointer; ' +
-            'font-family:monospace; font-size:12px; ' +
-            'transition:background 0.12s, border-color 0.12s;';
+            'color:#1e1e2e; padding:3px 10px; ' +
+            'background:#89b4fa; border:none; ' +
+            'border-radius:3px; margin:0 6px; flex-shrink:0; ' +
+            'cursor:pointer; font-family:inherit; font-size:11px; ' +
+            'font-weight:bold; line-height:1.3;';
         dbBtn.addEventListener('mouseenter', function () {
-            dbBtn.style.background = 'rgba(74,163,255,0.18)';
-            dbBtn.style.borderColor = '#4aa3ff';
+            dbBtn.style.background = '#74c7ec';
         });
         dbBtn.addEventListener('mouseleave', function () {
-            dbBtn.style.background = '#1a1a2a';
-            dbBtn.style.borderColor = '#2b2b3c';
+            dbBtn.style.background = '#89b4fa';
         });
         dbBtn.addEventListener('click', function (e) {
             e.stopPropagation();
@@ -320,7 +350,9 @@ FAR.WM._mountExplorerPanel = async function (win, props) {
     }, 400);
     win.props._pathWatcher = pathWatcher;
 
-    // Клик по элементу — выделение (гасим inline onclick/ondblclick).
+    // ============================================================
+    // Клик по элементу — выделение.
+    // ============================================================
     panelHost.addEventListener('click', function (e) {
         const itemEl = e.target.closest('.file-item');
         if (!itemEl) return;
@@ -333,7 +365,9 @@ FAR.WM._mountExplorerPanel = async function (win, props) {
         renderPathBar();
     }, true);
 
+    // ============================================================
     // Двойной клик — открытие файла / вход в папку.
+    // ============================================================
     panelHost.addEventListener('dblclick', async function (e) {
         const itemEl = e.target.closest('.file-item');
         if (!itemEl) return;
@@ -371,7 +405,9 @@ FAR.WM._mountExplorerPanel = async function (win, props) {
         }
     }, true);
 
+    // ============================================================
     // Контекстное меню (ПКМ).
+    // ============================================================
     panelHost.addEventListener('contextmenu', function (e) {
         e.preventDefault();
         e.stopPropagation();
@@ -397,7 +433,10 @@ FAR.WM._mountExplorerPanel = async function (win, props) {
         FAR.WM._showExplorerContextMenu(e.clientX, e.clientY, win, side);
     }, true);
 
-    // Drag & drop: НАЧАЛО перетаскивания из этого окна.
+    // ============================================================
+    // Drag & drop: НАЧАЛО перетаскивания из этого окна
+    // (внутреннее перетаскивание между WM-окнами, мышь).
+    // ============================================================
     panelHost.addEventListener('mousedown', function (e) {
         if (e.button !== 0) return;
         const itemEl = e.target.closest('.file-item');
@@ -449,7 +488,9 @@ FAR.WM._mountExplorerPanel = async function (win, props) {
         document.addEventListener('mouseup', onUp);   // bubble
     });
 
-    // Drag & drop: ПРИЁМ файлов из другого окна.
+    // ============================================================
+    // Drag & drop: ПРИЁМ файлов из другого WM-окна.
+    // ============================================================
     panelHost.addEventListener('mouseup', function (e) {
         if (!FAR.WM._dragPayload) return;
         if (FAR.WM._dragPayload.sourceWinId === win.id) return;
@@ -463,6 +504,127 @@ FAR.WM._mountExplorerPanel = async function (win, props) {
         else payload.mode = 'copy';
 
         FAR.WM._performDrop(win, side);
+    });
+
+    // ============================================================
+    // Drag & drop: ПРИЁМ файлов ИЗ ОПЕРАЦИОННОЙ СИСТЕМЫ.
+    //
+    // Это отдельная система событий (HTML5 drag events с
+    // dataTransfer.types, содержащим 'Files'). Она не
+    // конфликтует с внутренним перетаскиванием между
+    // WM-окнами (там мышь, а не HTML5 drag).
+    //
+    // Логика:
+    //   dragenter → показать оверлей, если в dataTransfer есть Files
+    //   dragover  → разрешить drop, установить эффект 'copy'
+    //   dragleave → счётчик, скрыть оверлей при полном выходе
+    //   drop      → прочитать файлы, загрузить в текущий путь панели
+    // ============================================================
+
+    let osDragCounter = 0;
+
+    const hasFiles = function (dt) {
+        if (!dt || !dt.types) return false;
+        for (let i = 0; i < dt.types.length; i++) {
+            if (dt.types[i] === 'Files') return true;
+        }
+        return false;
+    };
+
+    panelHost.addEventListener('dragenter', function (e) {
+        if (!hasFiles(e.dataTransfer)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        osDragCounter++;
+
+        const c = FAR.side[side];
+        const pathEl = dropOverlay.querySelector('[data-role="droppath"]');
+        if (pathEl) pathEl.textContent = '/' + FAR.normPath(c.path);
+        dropOverlay.style.display = 'flex';
+    });
+
+    panelHost.addEventListener('dragover', function (e) {
+        if (!hasFiles(e.dataTransfer)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        try { e.dataTransfer.dropEffect = 'copy'; } catch (err) {}
+    });
+
+    panelHost.addEventListener('dragleave', function (e) {
+        // Событие dragleave срабатывает при переходе на дочерний
+        // элемент тоже. Чтобы не мигало — считаем входы/выходы.
+        if (!hasFiles(e.dataTransfer)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        osDragCounter--;
+        if (osDragCounter <= 0) {
+            osDragCounter = 0;
+            dropOverlay.style.display = 'none';
+        }
+    });
+
+    panelHost.addEventListener('drop', async function (e) {
+        if (!hasFiles(e.dataTransfer)) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        osDragCounter = 0;
+        dropOverlay.style.display = 'none';
+
+        // Собираем файлы (включая содержимое папок) в общий список.
+        let files = [];
+        try {
+            if (typeof FAR.collectFilesFromDataTransfer === 'function') {
+                files = await FAR.collectFilesFromDataTransfer(e.dataTransfer);
+            } else {
+                // Резерв: плоский список файлов
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    files = Array.from(e.dataTransfer.files).map(function (f) {
+                        return {
+                            name: f.name,
+                            blob: f,
+                            contentType: f.type || 'application/octet-stream',
+                            relativePath: ''
+                        };
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('[WM explorer drop] collect failed:', err);
+            FAR.toast('Не удалось прочитать файлы', 'error');
+            return;
+        }
+
+        if (!files.length) {
+            FAR.toast('Файлы не найдены в перетаскивании', 'warning');
+            return;
+        }
+
+        const ctx = FAR.side[side];
+        if (!ctx || !ctx.db) {
+            FAR.toast('Панель не подключена к БД', 'warning');
+            return;
+        }
+
+        const targetPath = ctx.path || '/';
+
+        // FAR.uploadFilesToPath определяет сторону по
+        // FAR.activePanel — переключаем временно.
+        const prevActive = FAR.activePanel;
+        FAR.activePanel = side;
+
+        try {
+            await FAR.uploadFilesToPath(files, targetPath);
+        } catch (err) {
+            console.error('[WM explorer drop] upload failed:', err);
+            FAR.toast('Ошибка загрузки: ' + err.message, 'error');
+        } finally {
+            FAR.activePanel = prevActive;
+        }
+
+        // uploadFilesToPath сам вызывает reloadPanel(side) в конце,
+        // так что список файлов обновится. Крошки пути обновит
+        // pathWatcher в течение 400 мс.
     });
 };
 

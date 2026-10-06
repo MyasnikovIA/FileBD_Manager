@@ -24,11 +24,8 @@
   <component name="ChangeListManager">
     <list default="true" id="58b0bec6-76ed-43a5-8023-6ef531bb6bea" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/09-auth.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/09-auth.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/10-connection-modal.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/10-connection-modal.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/40-wm-core.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/40-wm-core.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/modals/connection.html" beforeDir="false" afterPath="$PROJECT_DIR$/modals/connection.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/modals/desktop.html" beforeDir="false" afterPath="$PROJECT_DIR$/modals/desktop.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/js/43-wm-desktop.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/43-wm-desktop.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/js/45-wm-bridge.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/45-wm-bridge.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -84,7 +81,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1789095193587</updated>
-      <workItem from="1791208933281" duration="8566000" />
+      <workItem from="1791208933281" duration="9815000" />
     </task>
     <servers />
   </component>
