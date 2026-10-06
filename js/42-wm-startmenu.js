@@ -33,17 +33,37 @@ FAR.WM.closeStartMenu = function () {
     if (btn) btn.classList.remove('open');
 };
 
-/**
- * Рендерит список приложений. Если задан `query` — фильтрует.
- */
+// ============================================================
+// Файл: js/42-wm-startmenu.js
+// Функция: FAR.WM._renderStartMenu (полный листинг)
+// ============================================================
+//
+// Рендерит список приложений в меню Пуск. Если задан `query` —
+// фильтрует по названию и keywords.
+//
+// ВАЖНО: некоторые приложения НЕ показываются в Пуске, потому
+// что они имеют смысл только при программном вызове из других
+// приложений. Сейчас это:
+//   • 'dbpick' — диалог выбора файла из БД. Открывается
+//     программно через FAR.WM.openFileDialog() из
+//     просмотрщика, редактора панорам и т.д.
+// Само приложение остаётся зарегистрированным в 44-wm-apps.js
+// и полностью работоспособным — мы только скрываем его
+// плитку в меню Пуск.
+
 FAR.WM._renderStartMenu = function (query) {
     const list = document.getElementById('wmStartList');
     if (!list) return;
+
+    // Приложения, которые НЕ показываем в Пуске
+    const HIDDEN_IN_START = { 'dbpick': true };
 
     const apps = FAR.WM.getApps ? FAR.WM.getApps() : [];
     const q = (query || '').toLowerCase().trim();
 
     const filtered = apps.filter(function (a) {
+        if (!a || !a.id) return false;
+        if (HIDDEN_IN_START[a.id]) return false;
         if (!q) return true;
         return a.title.toLowerCase().includes(q) ||
             (a.keywords || '').toLowerCase().includes(q);

@@ -1765,7 +1765,8 @@ FAR.WM._mountNotice = function (win, icon, text) {
 };
 
 // ============================================================
-// Диалог выбора файла из БД
+// Файл: js/45-wm-bridge.js
+// Функция: FAR.WM.openFileDialog (полный листинг)
 // ============================================================
 
 FAR.WM.openFileDialog = function (opts) {
@@ -1791,23 +1792,55 @@ FAR.WM.openFileDialog = function (opts) {
         });
 
         FAR.WM._mountFileDialog(win, side, opts).then(function (picked) {
-            if (picked) {
-                done(picked);
-                FAR.WM.closeWindow(win.id, true);
-            }
+            done(picked || null);
+            // force=true — onClose пропустим, чтобы не дёргать
+            // done(null) повторно. Key-listener снимается
+            // сам внутри onKeyDown при следующем keydown.
+            FAR.WM.closeWindow(win.id, true);
         });
     });
 };
 
+// ============================================================
+// Файл: js/45-wm-bridge.js
+// Функция: FAR.WM._mountFileDialog (полный листинг)
+// ============================================================
+
 FAR.WM._mountFileDialog = async function (win, side, opts) {
     return new Promise(function (resolve) {
+
+        // ---- Установка ключевого обработчика (нужна для cleanup) ----
+        let onKeyDown = null;
+
+        const removeKeyListener = function () {
+            if (!onKeyDown) return;
+            try { document.removeEventListener('keydown', onKeyDown, true); }
+            catch (e) {}
+            onKeyDown = null;
+        };
+
+        // При закрытии окна (в т.ч. force=true) — снимаем слушатель.
+        const origOnClose = win.onClose;
+        win.onClose = function (w) {
+            removeKeyListener();
+            if (typeof origOnClose === 'function') {
+                try { origOnClose(w); } catch (e) {}
+            }
+        };
+
+        // ---- Дом ----
         win.bodyEl.innerHTML = '';
         win.bodyEl.style.display = 'flex';
         win.bodyEl.style.flexDirection = 'row';
 
         const state = {
-            side: side, path: '/', items: [], cursor: -1,
-            selected: null, previewUrl: null, filter: opts.filter || null
+            side: side,
+            path: '/',
+            items: [],
+            cursor: -1,
+            selected: null,
+            previewUrl: null,
+            filter: opts.filter || null
         };
 
         const colList = document.createElement('div');
@@ -1815,7 +1848,7 @@ FAR.WM._mountFileDialog = async function (win, side, opts) {
         colList.innerHTML =
             '<div class="wm-fd-pathbar" data-role="path">/</div>' +
             '<input type="text" data-role="filter" placeholder="🔍 Фильтр…" style="margin:6px; padding:6px 10px; background:#12121c; border:1px solid #2b2b3c; border-radius:4px; color:#e6e6e6; font-size:12px;">' +
-            '<div class="wm-fd-list" data-role="list"></div>';
+            '<div class="wm-fd-list" data-role="list" tabindex="0"></div>';
 
         const colPreview = document.createElement('div');
         colPreview.className = 'wm-fd-col-preview';
@@ -1838,38 +1871,103 @@ FAR.WM._mountFileDialog = async function (win, side, opts) {
         const okBtn = colPreview.querySelector('[data-role="ok"]');
         const cancelBtn = colPreview.querySelector('[data-role="cancel"]');
 
-        cancelBtn.onclick = function () { resolve(null); };
-        okBtn.onclick = function () { if (state.selected) resolve(state.selected); };
+        // ============================================================
+        // Helpers
+        // ============================================================
 
+        // Отфильтрованный список — то, что реально видно в панели.
+        const getVisible = function () {
+            let items = state.items.slice();
+            if (state.filter) {
+                const q = state.filter.toLowerCase();
+                items = items.filter(function (it) {
+                    if (it.isFolder) return true;   // папки и «..» не фильтруем
+                    return it.name.toLowerCase().indexOf(q) !== -1;
+                });
+            }
+            return items;
+        };
+
+        // Переход в родительский каталог ВНУТРИ БД.
+        const goUp = function () {
+            const cur = FAR.normPath(state.path);
+            if (!cur) return;   // уже в корне
+            const parts = cur.split('/').filter(Boolean);
+            parts.pop();
+            const parent = parts.length ? '/' + parts.join('/') : '/';
+            loadDir(parent);
+        };
+
+        const scrollCursorIntoView = function () {
+            if (state.cursor < 0) return;
+            const rows = listEl.querySelectorAll('.wm-fd-item');
+            if (state.cursor < rows.length) {
+                try { rows[state.cursor].scrollIntoView({ block: 'nearest' }); }
+                catch (e) {}
+            }
+        };
+
+        // ============================================================
+        // Рендер списка
+        // ============================================================
         const render = function () {
             pathEl.textContent = state.path;
             listEl.innerHTML = '';
-            let items = state.items.slice();
-            if (state.filter) {
-                items = items.filter(it => it.isFolder || it.name.toLowerCase().includes(state.filter.toLowerCase()));
-            }
+
+            const items = getVisible();
+
+            if (items.length === 0) state.cursor = -1;
+            else if (state.cursor < 0) state.cursor = 0;
+            else if (state.cursor >= items.length) state.cursor = items.length - 1;
+
             items.forEach(function (it, idx) {
                 const row = document.createElement('div');
-                row.className = 'wm-fd-item' + (idx === state.cursor ? ' focused' : '') +
+                row.className = 'wm-fd-item' +
+                    (idx === state.cursor ? ' focused' : '') +
                     (state.selected && state.selected.path === it.path ? ' selected' : '');
+
+                let icon = '📄';
+                if (it._up || it.isFolder) icon = '📁';
+                else if (it.isImage) icon = '🖼️';
+
                 row.innerHTML =
-                    '<span>' + (it.isFolder ? '📁' : (it.isImage ? '🖼️' : '📄')) + '</span>' +
+                    '<span>' + icon + '</span>' +
                     '<span class="wm-fd-name">' + FAR.escapeHtml(it.name) + '</span>' +
                     '<span class="wm-fd-size">' + (it.isFolder ? '' : FAR.formatSize(it.size)) + '</span>';
+
                 row.onclick = function () {
                     state.cursor = idx;
-                    if (it.isFolder) { state.selected = null; loadDir(it.path); }
-                    else { state.selected = it; loadPreview(it); }
+                    if (it._up) {
+                        state.selected = null;
+                        goUp();
+                    } else if (it.isFolder) {
+                        state.selected = null;
+                        loadDir(it.path);
+                    } else {
+                        state.selected = it;
+                        loadPreview(it);
+                    }
                     render();
                 };
+
                 row.ondblclick = function () {
-                    if (it.isFolder) loadDir(it.path);
-                    else if (state.selected) resolve(state.selected);
+                    if (it._up) {
+                        goUp();
+                    } else if (it.isFolder) {
+                        loadDir(it.path);
+                    } else {
+                        state.selected = it;
+                        resolve(state.selected);
+                    }
                 };
+
                 listEl.appendChild(row);
             });
         };
 
+        // ============================================================
+        // Загрузка каталога из БД
+        // ============================================================
         const loadDir = async function (path) {
             state.path = '/' + FAR.normPath(path);
             state.cursor = -1;
@@ -1878,25 +1976,48 @@ FAR.WM._mountFileDialog = async function (win, side, opts) {
             infoEl.textContent = '';
             previewEl.innerHTML = '';
             listEl.innerHTML = '<div style="padding:20px;text-align:center;color:#6c7086;">Загрузка…</div>';
+
             try {
                 const children = await FAR.listDirFromSide(state.side, FAR.normPath(path), { includeDocs: true });
+
                 state.items = children.map(function (it) {
                     if (it.docType === 'folder' || it.isFolder) {
                         return { isFolder: true, name: it.name, path: it.path, size: 0 };
                     }
                     const ext = (it.name.split('.').pop() || '').toLowerCase();
-                    const isImage = ['jpg','jpeg','png','webp','gif','bmp','svg'].includes(ext);
-                    return { isFolder: false, name: it.name, path: it.path, size: it.size || 0, isImage: isImage, _item: it };
+                    const isImage = ['jpg','jpeg','png','webp','gif','bmp','svg'].indexOf(ext) !== -1;
+                    return {
+                        isFolder: false,
+                        name: it.name,
+                        path: it.path,
+                        size: it.size || 0,
+                        isImage: isImage,
+                        _item: it
+                    };
                 });
+
+                // «..» — только если не в корне.
                 if (FAR.normPath(path) !== '') {
-                    state.items.unshift({ isFolder: true, name: '..', path: '..', _up: true });
+                    state.items.unshift({
+                        isFolder: true,
+                        name: '..',
+                        path: '..',
+                        size: 0,
+                        _up: true
+                    });
                 }
+
+                // Курсор — на первый элемент.
+                state.cursor = getVisible().length > 0 ? 0 : -1;
                 render();
             } catch (e) {
                 listEl.innerHTML = '<div style="padding:20px;color:#f38ba8;">Ошибка: ' + FAR.escapeHtml(e.message) + '</div>';
             }
         };
 
+        // ============================================================
+        // Превью
+        // ============================================================
         const loadPreview = async function (item) {
             if (state.previewUrl) {
                 try { URL.revokeObjectURL(state.previewUrl); } catch (e) {}
@@ -1904,9 +2025,10 @@ FAR.WM._mountFileDialog = async function (win, side, opts) {
             }
             previewEl.innerHTML = '';
             infoEl.textContent = item.path;
+            okBtn.disabled = false;
+
             if (!item.isImage) {
                 previewEl.innerHTML = '<div style="color:#6c7086;padding:20px;">Превью недоступно</div>';
-                okBtn.disabled = false;
                 return;
             }
             try {
@@ -1915,18 +2037,160 @@ FAR.WM._mountFileDialog = async function (win, side, opts) {
                 const url = URL.createObjectURL(blob);
                 state.previewUrl = url;
                 previewEl.innerHTML = '<img src="' + url + '">';
-                okBtn.disabled = false;
             } catch (e) {
                 previewEl.innerHTML = '<div style="color:#f38ba8;padding:20px;">' + FAR.escapeHtml(e.message) + '</div>';
-                okBtn.disabled = false;
             }
         };
 
+        // ============================================================
+        // Кнопки
+        // ============================================================
+        cancelBtn.onclick = function () { resolve(null); };
+        okBtn.onclick = function () { if (state.selected) resolve(state.selected); };
+
         filterEl.addEventListener('input', function () {
             state.filter = filterEl.value;
+            state.cursor = 0;
             render();
         });
 
+        // ============================================================
+        // Клавиатура
+        // ============================================================
+        // Обработчик в capture-фазе на document, чтобы обогнать
+        // глобальный обработчик из 22-keyboard.js (тот слушает
+        // в bubble-фазе) и НЕ дать стрелкам уйти в панель FAR.
+        //
+        // Реагируем ТОЛЬКО если наше окно — активное (иначе при
+        // нескольких открытых окнах клавиши уйдут не туда).
+        onKeyDown = function (e) {
+            // Не наше окно активно — молча выходим, пусть решает
+            // тот, кто реально сверху.
+            if (FAR.WM.state.activeWindowId !== win.id) return;
+
+            // Страховка: окно уже закрыто (был force close),
+            // но listener ещё висит — снимаем.
+            if (!FAR.WM.getWindow(win.id)) {
+                removeKeyListener();
+                return;
+            }
+
+            const inFilter = (e.target === filterEl);
+            const visible = getVisible();
+
+            // Escape — закрыть в любом случае, даже из фильтра.
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                resolve(null);
+                return;
+            }
+
+            // Внутри поля фильтра: набор текста идёт в поле,
+            // Enter — подтверждение, остальное пропускаем.
+            if (inFilter) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (state.selected) resolve(state.selected);
+                }
+                return;
+            }
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (visible.length === 0) return;
+                state.cursor = Math.min(visible.length - 1,
+                    (state.cursor < 0 ? 0 : state.cursor + 1));
+                const it = visible[state.cursor];
+                if (it && !it.isFolder) { state.selected = it; loadPreview(it); }
+                else if (it) {
+                    state.selected = null;
+                    previewEl.innerHTML = '';
+                    infoEl.textContent = '';
+                    okBtn.disabled = true;
+                }
+                render();
+                scrollCursorIntoView();
+                return;
+            }
+
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (visible.length === 0) return;
+                state.cursor = Math.max(0,
+                    (state.cursor < 0 ? 0 : state.cursor - 1));
+                const it = visible[state.cursor];
+                if (it && !it.isFolder) { state.selected = it; loadPreview(it); }
+                else if (it) {
+                    state.selected = null;
+                    previewEl.innerHTML = '';
+                    infoEl.textContent = '';
+                    okBtn.disabled = true;
+                }
+                render();
+                scrollCursorIntoView();
+                return;
+            }
+
+            if (e.key === 'Home') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (visible.length === 0) return;
+                state.cursor = 0;
+                const it = visible[0];
+                if (it && !it.isFolder) { state.selected = it; loadPreview(it); }
+                render();
+                scrollCursorIntoView();
+                return;
+            }
+
+            if (e.key === 'End') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (visible.length === 0) return;
+                state.cursor = visible.length - 1;
+                const it = visible[state.cursor];
+                if (it && !it.isFolder) { state.selected = it; loadPreview(it); }
+                render();
+                scrollCursorIntoView();
+                return;
+            }
+
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                const it = visible[state.cursor];
+                if (!it) return;
+                if (it._up) {
+                    goUp();
+                } else if (it.isFolder) {
+                    loadDir(it.path);
+                } else {
+                    state.selected = it;
+                    resolve(it);
+                }
+                return;
+            }
+
+            if (e.key === 'Backspace') {
+                e.preventDefault();
+                e.stopPropagation();
+                goUp();
+                return;
+            }
+        };
+
+        document.addEventListener('keydown', onKeyDown, true);
+
+        // Фокус на список, чтобы клавиши приходили внутрь диалога.
+        setTimeout(function () {
+            try { listEl.focus(); } catch (e) {}
+        }, 50);
+
+        // Первая загрузка.
         loadDir('/');
     });
 };
