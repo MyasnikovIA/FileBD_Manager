@@ -324,6 +324,10 @@ FAR.WM._finalizeMp3Player = function (win) {
 // Основная функция монтирования плеера
 // ------------------------------------------------------------
 
+// ------------------------------------------------------------
+// Основная функция монтирования плеера
+// ------------------------------------------------------------
+
 FAR.WM._mountMp3Player = async function (win, props) {
     const side = props.side || FAR.activePanel;
 
@@ -357,6 +361,7 @@ FAR.WM._mountMp3Player = async function (win, props) {
         '<span style="flex:1;"></span>' +
         '<button data-cmd="save-pl" title="Сохранить плейлист как .fbmp3 в БД" style="padding:4px 10px;background:#4a8a4a;color:#cdd6f4;border:1px solid #000;border-radius:3px;cursor:pointer;font-size:11px;">💾 Сохранить</button>' +
         '<button data-cmd="load-pl" title="Загрузить .fbmp3 или добавить .mp3" style="padding:4px 10px;background:#4a6a8a;color:#cdd6f4;border:1px solid #000;border-radius:3px;cursor:pointer;font-size:11px;">📂 Загрузить / ➕ mp3</button>' +
+        '<button data-cmd="remove-sel" title="Убрать выделенные из списка (Delete)" style="padding:4px 10px;background:#7a5a2a;color:#cdd6f4;border:1px solid #000;border-radius:3px;cursor:pointer;font-size:11px;">🗑️ Из списка</button>' +
         '<button data-cmd="clear-pl" title="Очистить плейлист" style="padding:4px 10px;background:#6a3a3a;color:#cdd6f4;border:1px solid #000;border-radius:3px;cursor:pointer;font-size:11px;">✕ Очистить</button>' +
         '</div>' +
         '<div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:6px;padding:8px;">' +
@@ -678,26 +683,20 @@ FAR.WM._mountMp3Player = async function (win, props) {
                 const insertBefore = idx;
                 const moved = fromIdxs.map(function (i) { return S.playlist[i]; });
 
-                // Удаляем в обратном порядке
                 for (let i = fromIdxs.length - 1; i >= 0; i--) {
                     S.playlist.splice(fromIdxs[i], 1);
                 }
-                // Корректируем позицию вставки
                 let adjustedInsert = insertBefore;
                 for (const i of fromIdxs) {
                     if (i < insertBefore) adjustedInsert--;
                 }
-                // Вставляем
                 S.playlist.splice.apply(S.playlist, [adjustedInsert, 0].concat(moved));
 
-                // Обновляем currentIdx
-                // Если текущий трек — один из перемещённых — сдвигаем
                 if (S.currentIdx >= 0) {
                     if (fromIdxs.indexOf(S.currentIdx) >= 0) {
                         const posInMoved = fromIdxs.indexOf(S.currentIdx);
                         S.currentIdx = adjustedInsert + posInMoved;
                     } else {
-                        // Сдвигаем если он был после места вставки
                         let shift = 0;
                         for (const i of fromIdxs) {
                             if (i < S.currentIdx) shift--;
@@ -708,7 +707,6 @@ FAR.WM._mountMp3Player = async function (win, props) {
                     }
                 }
 
-                // Обновляем выделение
                 S.selectedIdxs.clear();
                 for (let i = 0; i < moved.length; i++) S.selectedIdxs.add(adjustedInsert + i);
                 S.anchorIdx = adjustedInsert;
@@ -826,20 +824,6 @@ FAR.WM._mountMp3Player = async function (win, props) {
         }
     };
 
-    // ------------------------------------------------------------
-    // Загрузка плейлиста из .fbmp3 + пополнение новыми mp3
-    // ------------------------------------------------------------
-    // Логика:
-    //   1. Читаем .fbmp3, парсим треки.
-    //   2. Очищаем текущий плейлист, заливаем содержимое файла.
-    //   3. Собираем множество уникальных папок, в которых лежат
-    //      треки из плейлиста.
-    //   4. Рекурсивно сканируем каждую из этих папок.
-    //   5. Все найденные mp3, которых нет в плейлисте, добавляем
-    //      в конец.
-    //   6. Если плейлист не пуст — стартуем воспроизведение
-    //      первого трека.
-
     const loadPlaylistFromPath = async function (path) {
         try {
             const r = await FAR.WM._mp3ReadFileBody(side, path);
@@ -851,13 +835,11 @@ FAR.WM._mountMp3Player = async function (win, props) {
             else if (Array.isArray(data)) tracks = data;
             else throw new Error('Файл не является плейлистом');
 
-            // ---- 1. Заменяем плейлист содержимым .fbmp3 ----
             S.playlist = [];
             S.currentIdx = -1;
             S.selectedIdxs.clear();
             S.anchorIdx = -1;
 
-            // Останавливаем текущее воспроизведение, если было
             if (S.audio) {
                 try {
                     S.audio.pause();
@@ -881,8 +863,6 @@ FAR.WM._mountMp3Player = async function (win, props) {
 
             const loadedFromFile = S.playlist.length;
 
-            // ---- 2. Собираем уникальные папки, в которых лежат
-            //         треки из плейлиста ----
             const folders = new Set();
             for (const e of S.playlist) {
                 const norm = FAR.normPath(e.path);
@@ -891,7 +871,6 @@ FAR.WM._mountMp3Player = async function (win, props) {
                 folders.add(dir);
             }
 
-            // ---- 3. Рекурсивно сканируем каждую папку на новые mp3 ----
             let added = 0;
             const foldersArr = Array.from(folders);
 
@@ -908,7 +887,6 @@ FAR.WM._mountMp3Player = async function (win, props) {
 
             renderPlaylist();
 
-            // ---- 4. Сообщение пользователю ----
             let msg = 'Загружено треков: ' + loadedFromFile;
             if (added > 0) {
                 msg += '  •  добавлено новых: ' + added;
@@ -916,7 +894,6 @@ FAR.WM._mountMp3Player = async function (win, props) {
             FAR.toast(msg, 'success');
             marqueeEl.textContent = msg;
 
-            // ---- 5. Запускаем воспроизведение первого трека ----
             if (S.playlist.length > 0) {
                 loadTrack(0);
             }
@@ -925,22 +902,6 @@ FAR.WM._mountMp3Player = async function (win, props) {
             FAR.toast('Ошибка загрузки плейлиста: ' + e.message, 'error');
         }
     };
-
-    // ------------------------------------------------------------
-    // Загрузка выбранных файлов в плейлист
-    // ------------------------------------------------------------
-    // Пользователь может выбрать в диалоге:
-    //   • один или несколько .mp3
-    //   • один или несколько .fbmp3
-    //   • смесь .mp3 и .fbmp3 в любом порядке
-    //
-    // Обрабатываем файлы строго В ПОРЯДКЕ ВЫБОРА:
-    //   .mp3    → добавляем как трек
-    //   .fbmp3  → раскрываем: читаем его tracks и вставляем
-    //             их в плейлист в этой же позиции
-    //
-    // Ничего не заменяем и не очищаем — только дополняем.
-    // Существующий плейлист сохраняется.
 
     const loadPlaylistDialog = async function () {
         const picked = await FAR.WM.openFileDialogMulti({
@@ -956,7 +917,6 @@ FAR.WM._mountMp3Player = async function (win, props) {
         let errors = 0;
 
         for (const item of picked) {
-            // ---- .fbmp3 → раскрываем в этом же месте ----
             if (FAR.WM.isFbmp3(item)) {
                 try {
                     const r = await FAR.WM._mp3ReadFileBody(side, item.path);
@@ -992,7 +952,6 @@ FAR.WM._mountMp3Player = async function (win, props) {
                 continue;
             }
 
-            // ---- .mp3 → обычный трек ----
             if (FAR.isMp3(item)) {
                 if (addTrackByPath(item.path, item.name)) {
                     totalAdded++;
@@ -1002,13 +961,11 @@ FAR.WM._mountMp3Player = async function (win, props) {
                 continue;
             }
 
-            // ---- что-то другое ----
             skipped++;
         }
 
         renderPlaylist();
 
-        // ---- Итоговое сообщение ----
         let msg = 'Добавлено треков: ' + totalAdded;
         const parts = [];
         if (playlistsExpanded > 0) parts.push('плейлистов: ' + playlistsExpanded);
@@ -1019,11 +976,70 @@ FAR.WM._mountMp3Player = async function (win, props) {
         FAR.toast(msg, totalAdded > 0 ? 'success' : 'warning');
         marqueeEl.textContent = msg;
 
-        // ---- Автозапуск, если сейчас ничего не играет ----
         const isPlaying = S.audio && !S.audio.paused;
         if (!isPlaying && S.playlist.length > 0 && S.currentIdx < 0) {
             loadTrack(0);
         }
+    };
+
+    // ------------------------------------------------------------
+    // Убрать выделенные треки ИЗ СПИСКА (не из БД!)
+    // ------------------------------------------------------------
+    // Если среди удаляемых был текущий трек — останавливаем
+    // воспроизведение и сбрасываем currentIdx = -1.
+    const removeSelectedFromList = function () {
+        if (S.selectedIdxs.size === 0) {
+            FAR.toast('Ничего не выделено', 'info');
+            return;
+        }
+
+        const toRemove = Array.from(S.selectedIdxs).sort(function (a, b) { return a - b; });
+        const removeSet = new Set(toRemove);
+
+        const currentRemoved = S.currentIdx >= 0 && removeSet.has(S.currentIdx);
+
+        let shiftBeforeCurrent = 0;
+        if (S.currentIdx >= 0) {
+            for (const i of toRemove) {
+                if (i < S.currentIdx) shiftBeforeCurrent++;
+            }
+        }
+
+        const newList = [];
+        for (let i = 0; i < S.playlist.length; i++) {
+            if (removeSet.has(i)) continue;
+            newList.push(S.playlist[i]);
+        }
+
+        S.playlist = newList;
+        S.selectedIdxs.clear();
+        S.anchorIdx = -1;
+
+        if (currentRemoved) {
+            S.currentIdx = -1;
+            if (S.audio) {
+                try { S.audio.pause(); } catch (e) {}
+                try {
+                    S.audio.removeAttribute('src');
+                    S.audio.load();
+                } catch (e) {}
+            }
+            if (S.blobUrl) {
+                try { URL.revokeObjectURL(S.blobUrl); } catch (e) {}
+                S.blobUrl = null;
+            }
+            stopVisualizer();
+            updatePlayBtn();
+            timeEl.textContent = '00:00';
+            seekFillEl.style.width = '0%';
+            seekThumbEl.style.left = '0%';
+            marqueeEl.textContent = 'Воспроизведение остановлено';
+        } else if (S.currentIdx >= 0) {
+            S.currentIdx -= shiftBeforeCurrent;
+        }
+
+        renderPlaylist();
+        FAR.toast('Убрано из списка: ' + toRemove.length, 'success');
     };
 
     // ---- Обработчики кнопок ----
@@ -1036,6 +1052,9 @@ FAR.WM._mountMp3Player = async function (win, props) {
             case 'add-dir':  await addDirDialog();  break;
             case 'save-pl':  await savePlaylist();  break;
             case 'load-pl':  await loadPlaylistDialog(); break;
+            case 'remove-sel':
+                removeSelectedFromList();
+                break;
             case 'clear-pl':
                 S.playlist = [];
                 S.currentIdx = -1;
@@ -1114,17 +1133,111 @@ FAR.WM._mountMp3Player = async function (win, props) {
         S.audio.currentTime = pct * S.audio.duration;
     });
 
+    // ------------------------------------------------------------
+    // Клавиатура: Delete — убрать выделенные из списка
+    // ------------------------------------------------------------
+    // Capture-фаза, чтобы обогнать глобальный 22-keyboard.js
+    // (там Delete = FAR.deleteSelected для панелей).
+    const onKeyDownMp3 = function (e) {
+        if (FAR.WM.state.activeWindowId !== win.id) return;
+        if (!FAR.WM.getWindow(win.id)) {
+            document.removeEventListener('keydown', onKeyDownMp3, true);
+            return;
+        }
+
+        const t = e.target;
+        const tag = (t && t.tagName) || '';
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (t && t.isContentEditable)) return;
+
+        // Delete — убрать выделенные из списка
+        if (e.key === 'Delete') {
+            if (S.selectedIdxs.size === 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            removeSelectedFromList();
+            return;
+        }
+
+        // Ctrl+A — выделить все треки в плейлисте
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
+            e.preventDefault();
+            e.stopPropagation();
+            S.selectedIdxs.clear();
+            for (let i = 0; i < S.playlist.length; i++) S.selectedIdxs.add(i);
+            S.anchorIdx = 0;
+            renderPlaylist();
+            return;
+        }
+    };
+    document.addEventListener('keydown', onKeyDownMp3, true);
+
+    // Снимаем обработчик при закрытии окна
+    const prevOnClose = win.onClose;
+    win.onClose = function (w) {
+        try { document.removeEventListener('keydown', onKeyDownMp3, true); } catch (e) {}
+        if (typeof prevOnClose === 'function') {
+            try { prevOnClose(w); } catch (e) {}
+        }
+    };
+
+    // ------------------------------------------------------------
+    // Публичный API плеера (для onReopen и внешних вызовов)
+    // ------------------------------------------------------------
+    win.props._mp3Api = {
+        openFileAndPlay: async function (fileItem) {
+            if (!fileItem) return;
+            const filePath = FAR.normPath(fileItem.path);
+            if (!filePath) return;
+
+            const dir = filePath.includes('/')
+                ? filePath.substring(0, filePath.lastIndexOf('/'))
+                : '';
+            try {
+                const children = await FAR.listDirFromSide(side, dir, { includeDocs: true });
+                for (const it of children) {
+                    if (!it.isFolder && FAR.isMp3(it)) {
+                        addTrackByPath(it.path, it.name);
+                    }
+                }
+            } catch (e) { /* ignore */ }
+
+            if (!S.playlist.some(function (e) {
+                return FAR.normPath(e.path) === filePath;
+            })) {
+                addTrackByPath(filePath, fileItem.name || filePath.split('/').pop());
+            }
+
+            renderPlaylist();
+
+            const idx = S.playlist.findIndex(function (e) {
+                return FAR.normPath(e.path) === filePath;
+            });
+            if (idx >= 0) loadTrack(idx);
+        },
+
+        loadPlaylistFromPath: function (path) {
+            return loadPlaylistFromPath(path);
+        },
+
+        addFile: function (fileItem) {
+            if (!fileItem) return false;
+            const ok = addTrackByPath(
+                fileItem.path,
+                fileItem.name || (fileItem.path || '').split('/').pop()
+            );
+            renderPlaylist();
+            return ok;
+        }
+    };
+
     updateModeButtons();
 
     // ---- Стартовая загрузка ----
     if (props.playlistPath) {
-        // Открытие .fbmp3 из Проводника
         await loadPlaylistFromPath(props.playlistPath);
     } else if (props.file && FAR.WM.isFbmp3(props.file)) {
         await loadPlaylistFromPath(props.file.path);
     } else if (props.file && FAR.isMp3(props.file)) {
-        // Открыт один mp3-файл из Проводника — добавляем все mp3
-        // из той же папки в плейлист и играем выбранный
         const dir = FAR.normPath(props.file.path).includes('/')
             ? FAR.normPath(props.file.path).substring(0, FAR.normPath(props.file.path).lastIndexOf('/'))
             : '';
@@ -1137,13 +1250,11 @@ FAR.WM._mountMp3Player = async function (win, props) {
             }
         } catch (e) { /* ignore */ }
 
-        // Если исходного файла нет в плейлисте — добавим принудительно
         if (!S.playlist.some(e => FAR.normPath(e.path) === FAR.normPath(props.file.path))) {
             addTrackByPath(props.file.path, props.file.name);
         }
         renderPlaylist();
 
-        // Найти индекс выбранного и запустить
         const curIdx = S.playlist.findIndex(e => FAR.normPath(e.path) === FAR.normPath(props.file.path));
         if (curIdx >= 0) loadTrack(curIdx);
     } else {
@@ -1152,14 +1263,6 @@ FAR.WM._mountMp3Player = async function (win, props) {
 
     renderPlaylist();
 };
-
-// ------------------------------------------------------------
-// Регистрация приложения (перезаписывает mp3 из 44-wm-apps.js)
-// ------------------------------------------------------------
-
-// ------------------------------------------------------------
-// Регистрация приложения (перезаписывает mp3 из 44-wm-apps.js)
-// ------------------------------------------------------------
 
 FAR.WM.registerApp({
     id: 'mp3',

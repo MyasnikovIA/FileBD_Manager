@@ -23,11 +23,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="58b0bec6-76ed-43a5-8023-6ef531bb6bea" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/js/46-wm-mp3-viewer.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/index.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/44-wm-apps.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/44-wm-apps.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/45-wm-bridge.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/45-wm-bridge.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/js/46-wm-mp3-viewer.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/46-wm-mp3-viewer.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -83,7 +80,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1789095193587</updated>
-      <workItem from="1791208933281" duration="15173000" />
+      <workItem from="1791208933281" duration="15814000" />
     </task>
     <servers />
   </component>
