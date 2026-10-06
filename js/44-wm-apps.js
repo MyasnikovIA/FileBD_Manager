@@ -32,10 +32,14 @@ FAR.WM.openApp = async function (appId, opts) {
     const def = FAR.WM.getApp(appId);
     if (!def) {
         FAR.toast('Приложение не найдено: ' + appId, 'error');
-        return;
+        return null;
     }
 
-    if (def.singleton && !opts.forceNew) {
+    // Singleton — если окно уже открыто, фокусируем.
+    // НО: при восстановлении (_restoring) singleton
+    // игнорируем — пользователь мог закрыть и открыть,
+    // или иметь несколько окон одного приложения.
+    if (def.singleton && !opts.forceNew && !opts._restoring) {
         const existing = FAR.WM.state.windows.find(function (w) {
             return w.appId === appId;
         });

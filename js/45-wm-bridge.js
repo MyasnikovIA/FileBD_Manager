@@ -172,17 +172,6 @@ FAR.WM._performDrop = async function (targetWin, targetSide) {
 // ============================================================
 // Проводник FileBD
 // ============================================================
-
-// ============================================================
-// Файл: js/45-wm-bridge.js
-// Функция: FAR.WM._mountExplorerPanel (полный листинг)
-// ============================================================
-
-// ============================================================
-// Файл: js/45-wm-bridge.js
-// Функция: FAR.WM._mountExplorerPanel (полный листинг)
-// ============================================================
-
 FAR.WM._mountExplorerPanel = async function (win, props) {
     const used = FAR.WM.state.windows
         .filter(w => w.appId === 'explorer' && w.id !== win.id)
@@ -1764,11 +1753,6 @@ FAR.WM._mountNotice = function (win, icon, text) {
         '<div style="font-size:14px;">' + FAR.escapeHtml(text) + '</div></div>';
 };
 
-// ============================================================
-// Файл: js/45-wm-bridge.js
-// Функция: FAR.WM.openFileDialog (полный листинг)
-// ============================================================
-
 FAR.WM.openFileDialog = function (opts) {
     opts = opts || {};
     return new Promise(function (resolve) {
@@ -1800,11 +1784,6 @@ FAR.WM.openFileDialog = function (opts) {
         });
     });
 };
-
-// ============================================================
-// Файл: js/45-wm-bridge.js
-// Функция: FAR.WM._mountFileDialog (полный листинг)
-// ============================================================
 
 FAR.WM._mountFileDialog = async function (win, side, opts) {
     return new Promise(function (resolve) {
@@ -2247,21 +2226,6 @@ FAR.WM._installOpenFileWrapper = function () {
         return FAR.WM.openApp('viewer', { props: { file: item, side: side } });
     };
 };
-// ============================================================
-// Файл: js/45-wm-bridge.js
-// Функция: FAR.WM._openExplorerConnDialog (новая)
-// ============================================================
-//
-// Открывает модальное окно WM с формой подключения для ОДНОЙ
-// панели. После успешного подключения:
-//   • применяет конфиг ТОЛЬКО к указанной стороне;
-//   • сохраняет в localStorage (side-specific ключ);
-//   • перезагружает корень этой панели;
-//   • перерисовывает все окна Проводника, которые смотрят
-//     на эту сторону (обычно одно).
-//
-// Классический режим не затрагивается — там своя модалка
-// через FAR.openConnModal, и она работает по-прежнему.
 
 FAR.WM._openExplorerConnDialog = function (parentWin, side) {
     if (!side) return;
@@ -2280,15 +2244,6 @@ FAR.WM._openExplorerConnDialog = function (parentWin, side) {
 
     FAR.WM._mountSideConnUI(dialogWin, side);
 };
-
-// ============================================================
-// Файл: js/45-wm-bridge.js
-// Функция: FAR.WM._mountSideConnUI (новая)
-// ============================================================
-//
-// Форма подключения для одной панели. Похожа на
-// _mountConnectionUI (обе панели), но применяет конфиг
-// только к одной стороне.
 
 FAR.WM._mountSideConnUI = function (win, side) {
     win.bodyEl.innerHTML =

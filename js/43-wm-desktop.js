@@ -34,11 +34,6 @@ FAR.WM._saveDesktopIcons = function (list) {
     } catch (e) { /* ignore */ }
 };
 
-// ============================================================
-// Файл: js/43-wm-desktop.js
-// Функция: FAR.WM._renderDesktopIcons (полный листинг)
-// ============================================================
-
 FAR.WM._renderDesktopIcons = function () {
     const container = document.getElementById('wmDesktopIcons');
     if (!container) return;

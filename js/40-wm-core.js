@@ -14,6 +14,13 @@
 
 FAR.WM = FAR.WM || {};
 FAR.WM.LS_MODE_KEY = 'filebd_ui_mode';
+FAR.WM.LS_WINDOWS_KEY = 'filebd_wm_windows';
+
+FAR.WM._SKIP_RESTORE_APPS = {
+    'jsdos': 1,
+    'nes': 1,
+    'emulator': 1
+};
 
 FAR.WM.state = {
     active: false,
@@ -60,21 +67,28 @@ FAR.WM.enter = function () {
     FAR.WM._renderStartMenu();
     FAR.WM._startClock();
 
-    // Открываем Проводник автоматически, чтобы пользователь
-    // не увидел пустой стол.
-    FAR.WM.openApp('explorer');
+    // ============================================================
+    // Восстанавливаем окна из прошлой сессии.
+    //
+    // • Ключа нет → первый вход, открываем Проводник.
+    // • Ключ есть, пустой массив → пользователь закрыл все
+    //   окна ранее, оставляем стол пустым.
+    // • Ключ есть, есть окна → восстанавливаем все.
+    // ============================================================
+    FAR.WM._restoreWindows().catch(function (e) {
+        console.warn('[WM restore] failed:', e);
+    });
 
     FAR.toast('Оконный режим включён', 'info');
 };
 
-/**
- * Выключает оконный режим, закрывая все окна.
- */
-/**
- * Выключает оконный режим, закрывая все окна.
- */
 FAR.WM.exit = function () {
     if (!FAR.WM.state.active) return;
+
+    // ВАЖНО: сохраняем состояние окон ПЕРЕД закрытием,
+    // иначе closeWindow(force=true) перезапишет его пустым
+    // массивом.
+    FAR.WM._saveWindowState();
 
     // Закрываем все окна без подтверждения
     const ids = FAR.WM.state.windows.map(w => w.id);
@@ -122,6 +136,7 @@ FAR.WM.toggle = function () {
  *
  * @returns {Object} дескриптор окна
  */
+
 FAR.WM.openWindow = function (opts) {
     opts = opts || {};
     const id = 'wm-win-' + (FAR.WM.state.nextId++);
@@ -226,7 +241,7 @@ FAR.WM.openWindow = function (opts) {
         prevRect: null,
         minimized: false,
         maximized: false,
-        snap: null,                 // null | 'left' | 'right'
+        snap: null,
         modalParent: opts.parentId || null,
         onClose: opts.onClose || null,
         props: opts.props || {},
@@ -243,6 +258,9 @@ FAR.WM.openWindow = function (opts) {
         if (parent) parent.el.classList.add('modal-locked');
     }
 
+    // Сохраняем состояние окон (debounce)
+    FAR.WM._saveWindowStateDebounced();
+
     return win;
 };
 
@@ -251,11 +269,6 @@ FAR.WM.openWindow = function (opts) {
  * @param {string} id
  * @param {boolean} [force] — без колбэка onClose (при выходе из режима)
  */
-// ============================================================
-// Файл: js/40-wm-core.js
-// Функция: FAR.WM.closeWindow (полный листинг)
-// ============================================================
-
 FAR.WM.closeWindow = function (id, force) {
     const idx = FAR.WM.state.windows.findIndex(w => w.id === id);
     if (idx < 0) return;
@@ -267,22 +280,13 @@ FAR.WM.closeWindow = function (id, force) {
         if (parent) parent.el.classList.remove('modal-locked');
     }
 
-    // ============================================================
-    // ВАЖНО: возвращаем id оригинальной модалке.
-    // _mountWithOriginal стешит id всех элементов модалки,
-    // чтобы клон в окне мог занять нормальные id. Пока окно
-    // живо — оригинал держит суффикс __wm_stash_N.
-    // При закрытии окна суффикс надо снять, иначе повторное
-    // открытие не найдёт модалку.
-    // ============================================================
+    // Возвращаем id оригинальной модалке (если был стеш)
     if (win.props && win.props._stash && typeof FAR.WM._unstashModalIds === 'function') {
         FAR.WM._unstashModalIds(win.props._stash);
         win.props._stash = null;
     }
 
     // Возвращаем id оригинальной панели Проводника
-    // (это отдельный механизм от _stash, поэтому обрабатываем
-    //  отдельно, через _cleanupExplorerPanel ниже).
     if (win.appId === 'explorer' && typeof FAR.WM._cleanupExplorerPanel === 'function') {
         try { FAR.WM._cleanupExplorerPanel(win); } catch (e) { /* ignore */ }
     }
@@ -295,7 +299,6 @@ FAR.WM.closeWindow = function (id, force) {
     FAR.WM.state.windows.splice(idx, 1);
 
     if (FAR.WM.state.activeWindowId === id) {
-        // Активируем верхнее видимое окно
         const next = FAR.WM.state.windows
             .filter(w => !w.minimized)
             .sort((a, b) => (b.zTop || 0) - (a.zTop || 0))[0];
@@ -304,164 +307,13 @@ FAR.WM.closeWindow = function (id, force) {
     }
 
     FAR.WM._renderTaskbar();
-};
 
-FAR.WM.getWindow = function (id) {
-    return FAR.WM.state.windows.find(w => w.id === id) || null;
-};
-
-FAR.WM.getActiveWindow = function () {
-    return FAR.WM.getWindow(FAR.WM.state.activeWindowId);
-};
-
-// ============================================================
-// Фокус / z-index
-// ============================================================
-
-// ============================================================
-// Файл: js/40-wm-core.js
-// Функция: FAR.WM.focusWindow (полный листинг)
-// ============================================================
-
-FAR.WM.focusWindow = function (id) {
-    const win = FAR.WM.getWindow(id);
-    if (!win) return;
-
-    // Никакое другое окно не должно быть «выше» модального родителя
-    if (win.modalParent) {
-        const parent = FAR.WM.getWindow(win.modalParent);
-        if (parent) {
-            FAR.WM.state.zTop++;
-            parent.el.style.zIndex = FAR.WM.state.zTop;
-        }
+    // Сохраняем состояние окон, КРОМЕ force-закрытия
+    // (force вызывается при выходе из WM — там состояние
+    // уже сохранено в exit до закрытия).
+    if (!force) {
+        FAR.WM._saveWindowStateDebounced();
     }
-
-    FAR.WM.state.zTop++;
-    win.el.style.zIndex = FAR.WM.state.zTop;
-    win.zTop = FAR.WM.state.zTop;
-
-    // Снимаем .focused со всех, ставим на активное
-    FAR.WM.state.windows.forEach(function (w) {
-        w.el.classList.toggle('focused', w.id === id);
-    });
-
-    if (win.minimized) {
-        win.minimized = false;
-        win.el.classList.remove('minimized');
-    }
-
-    FAR.WM.state.activeWindowId = id;
-    FAR.WM._renderTaskbar();
-
-    // ============================================================
-    // Синхронизация активной панели с окном Проводника.
-    //
-    // Когда пользователь кликает на окно Проводника,
-    // показывающее сторону 'left' или 'right', глобальная
-    // FAR.activePanel должна указывать на ту же сторону.
-    //
-    // Иначе клавиатурные стрелки (обработчик из 22-keyboard.js
-    // двигает курсор в FAR.side[FAR.activePanel]) будут
-    // срабатывать не в том окне.
-    // ============================================================
-    if (win.appId === 'explorer' && win.props && win.props.side) {
-        FAR.activePanel = win.props.side;
-
-        // Синхронизируем подсветку классических панелей
-        // (на случай, если WM-режим выключится — не запутаться)
-        try {
-            const pl = document.getElementById('panelLeft');
-            const pr = document.getElementById('panelRight');
-            if (pl && pr) {
-                pl.classList.toggle('active', FAR.activePanel === 'left');
-                pr.classList.toggle('active', FAR.activePanel === 'right');
-            }
-        } catch (e) { /* ignore */ }
-    }
-
-    // Сообщаем приложению — оно может захотеть сфокусировать поле
-    if (typeof win.props.onFocus === 'function') {
-        try { win.props.onFocus(win); } catch (e) {}
-    }
-};
-
-// ============================================================
-// Свернуть / развернуть / снап
-// ============================================================
-
-FAR.WM.minimizeWindow = function (id) {
-    const win = FAR.WM.getWindow(id);
-    if (!win) return;
-    win.minimized = true;
-    win.el.classList.add('minimized');
-
-    if (FAR.WM.state.activeWindowId === id) {
-        const next = FAR.WM.state.windows
-            .filter(w => !w.minimized)
-            .sort((a, b) => (b.zTop || 0) - (a.zTop || 0))[0];
-        FAR.WM.state.activeWindowId = next ? next.id : null;
-        if (next) FAR.WM.focusWindow(next.id);
-    }
-    FAR.WM._renderTaskbar();
-};
-
-FAR.WM.restoreWindow = function (id) {
-    const win = FAR.WM.getWindow(id);
-    if (!win) return;
-    win.minimized = false;
-    win.el.classList.remove('minimized');
-    FAR.WM.focusWindow(id);
-};
-
-FAR.WM.toggleMaximize = function (id) {
-    const win = FAR.WM.getWindow(id);
-    if (!win) return;
-
-    if (win.maximized) {
-        // Восстанавливаем
-        const r = win.prevRect || { x: 100, y: 100, w: 800, h: 600 };
-        FAR.WM._applyRect(win, r);
-        win.el.classList.remove('maximized');
-        win.maximized = false;
-    } else {
-        win.prevRect = { x: win.x, y: win.y, w: win.w, h: win.h };
-        const rect = FAR.WM._getDesktopRect();
-        FAR.WM._applyRect(win, { x: 0, y: 0, w: rect.width, h: rect.height });
-        win.el.classList.add('maximized');
-        win.maximized = true;
-    }
-    FAR.WM.focusWindow(id);
-};
-
-FAR.WM.snapWindow = function (id, side) {
-    const win = FAR.WM.getWindow(id);
-    if (!win) return;
-
-    if (side === 'restore') {
-        const r = win.prevRect || { x: 100, y: 100, w: 800, h: 600 };
-        FAR.WM._applyRect(win, r);
-        win.el.classList.remove('snapped-left', 'snapped-right');
-        win.snap = null;
-        return;
-    }
-
-    if (!win.snap) {
-        win.prevRect = { x: win.x, y: win.y, w: win.w, h: win.h };
-    }
-    const rect = FAR.WM._getDesktopRect();
-    if (side === 'left') {
-        FAR.WM._applyRect(win, { x: 0, y: 0, w: Math.floor(rect.width / 2), h: rect.height });
-        win.el.classList.add('snapped-left');
-        win.el.classList.remove('snapped-right');
-        win.snap = 'left';
-    } else if (side === 'right') {
-        FAR.WM._applyRect(win, { x: Math.floor(rect.width / 2), y: 0,
-            w: Math.ceil(rect.width / 2), h: rect.height });
-        win.el.classList.add('snapped-right');
-        win.el.classList.remove('snapped-left');
-        win.snap = 'right';
-    }
-    FAR.WM.focusWindow(id);
 };
 
 // ============================================================
@@ -879,9 +731,8 @@ FAR.WM.saveMode = function (mode) {
 };
 
 FAR.WM.clearMode = function () {
-    try {
-        localStorage.removeItem(FAR.WM.LS_MODE_KEY);
-    } catch (e) { /* ignore */ }
+    try { localStorage.removeItem(FAR.WM.LS_MODE_KEY); } catch (e) {}
+    try { FAR.WM.clearWindowState(); } catch (e) {}
 };
 
 /**
@@ -895,4 +746,367 @@ FAR.WM.exitToPanelMode = function () {
         FAR.WM.exit();
     }
     FAR.toast('Режим: панельный', 'info');
+};
+
+/**
+ * Приводит props окна к сериализуемому виду.
+ * Сохраняем минимум: side + метаданные файла (без blob,
+ * без ссылок на DOM/fileIndex).
+ */
+FAR.WM._serializableProps = function (props) {
+    const out = {};
+    if (!props) return out;
+
+    if (props.side === 'left' || props.side === 'right') {
+        out.side = props.side;
+    }
+
+    if (props.file && typeof props.file === 'object') {
+        out.file = {
+            _id: props.file._id || '',
+            name: props.file.name || '',
+            path: props.file.path || '',
+            size: props.file.size || 0,
+            isFolder: !!props.file.isFolder,
+            docType: props.file.docType || 'file',
+            binary: !!props.file.binary,
+            contentType: props.file.contentType || '',
+            children: Array.isArray(props.file.children) ? props.file.children.slice() : []
+        };
+    }
+
+    if (props.filter) out.filter = String(props.filter);
+
+    return out;
+};
+
+/**
+ * Сериализует одно окно. Возвращает null, если окно
+ * сохранять не нужно.
+ */
+FAR.WM._serializeWindow = function (win) {
+    if (!win || !win.appId) return null;
+    if (win.modalParent) return null;
+    if (FAR.WM._SKIP_RESTORE_APPS[win.appId]) return null;
+
+    return {
+        appId: win.appId,
+        title: win.title || '',
+        icon: win.icon || '🪟',
+        x: win.x,
+        y: win.y,
+        w: win.w,
+        h: win.h,
+        minimized: !!win.minimized,
+        maximized: !!win.maximized,
+        snap: win.snap || null,
+        zTop: win.zTop || 0,
+        props: FAR.WM._serializableProps(win.props)
+    };
+};
+
+/**
+ * Синхронно сохраняет текущее состояние всех окон.
+ */
+FAR.WM._saveWindowState = function () {
+    try {
+        const snaps = [];
+        FAR.WM.state.windows.forEach(function (w) {
+            const s = FAR.WM._serializeWindow(w);
+            if (s) snaps.push(s);
+        });
+        localStorage.setItem(FAR.WM.LS_WINDOWS_KEY, JSON.stringify(snaps));
+    } catch (e) { /* ignore */ }
+};
+
+/**
+ * Debounce-версия: не чаще одного сохранения в 200 мс.
+ * Используется при drag/resize/focus, чтобы не спамить
+ * localStorage на каждое движение мыши.
+ */
+FAR.WM._saveWindowStateTimer = null;
+FAR.WM._saveWindowStateDebounced = function () {
+    if (FAR.WM._saveWindowStateTimer) return;
+    FAR.WM._saveWindowStateTimer = setTimeout(function () {
+        FAR.WM._saveWindowStateTimer = null;
+        FAR.WM._saveWindowState();
+    }, 200);
+};
+
+/**
+ * Читает состояние окон из localStorage.
+ * Возвращает:
+ *   • null — ключа нет (первый запуск)
+ *   • []   — ключ есть, окон не было
+ *   • [snap,...] — список сохранённых окон
+ */
+FAR.WM._loadWindowState = function () {
+    try {
+        const raw = localStorage.getItem(FAR.WM.LS_WINDOWS_KEY);
+        if (raw === null) return null;
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return null;
+        return arr;
+    } catch (e) {
+        return null;
+    }
+};
+
+/**
+ * Полностью очищает сохранённое состояние окон.
+ * Вызывается при LogOut.
+ */
+FAR.WM.clearWindowState = function () {
+    try { localStorage.removeItem(FAR.WM.LS_WINDOWS_KEY); } catch (e) {}
+};
+
+/**
+ * Восстанавливает окна из localStorage.
+ *
+ * Алгоритм:
+ *   1. Читаем сохранённый список.
+ *   2. Если ключа нет — это первый вход, открываем Проводник.
+ *   3. Если ключ есть и пуст — ничего не открываем.
+ *   4. Если есть окна — восстанавливаем по одному в порядке
+ *      возрастания zTop (сначала нижние, потом верхние),
+ *      применяем геометрию, флаги и фокусируем последнее.
+ *
+ * Порядок восстановления последовательный (await), чтобы
+ * не было параллельных загрузок одного и того же.
+ */
+FAR.WM._restoreWindows = async function () {
+    const snaps = FAR.WM._loadWindowState();
+
+    // Первый запуск в WM — открываем Проводник (дефолт)
+    if (snaps === null) {
+        FAR.WM.openApp('explorer');
+        return;
+    }
+
+    // Пользователь закрыл все окна ранее — оставляем пустой стол
+    if (snaps.length === 0) {
+        return;
+    }
+
+    // Сортируем по zTop: снизу вверх. Последнее будет сверху.
+    snaps.sort(function (a, b) {
+        return (a.zTop || 0) - (b.zTop || 0);
+    });
+
+    // Флаг, чтобы избежать промежуточных сохранений
+    FAR.WM._restoring = true;
+
+    for (const snap of snaps) {
+        try {
+            // ---- Резолвим item файла из сохранённых метаданных ----
+            const props = Object.assign({}, snap.props || {});
+            if (props.file && props.file._id && props.side) {
+                const ctx = FAR.side[props.side];
+                if (ctx && Array.isArray(ctx.fileIndex)) {
+                    const found = ctx.fileIndex.find(function (f) {
+                        return f && f._id === props.file._id;
+                    });
+                    if (found) {
+                        // Используем «живой» элемент панели
+                        props.file = found;
+                    }
+                }
+            }
+
+            // ---- Открываем приложение ----
+            const win = await FAR.WM.openApp(snap.appId, {
+                props: props,
+                x: snap.x,
+                y: snap.y,
+                width: snap.w,
+                height: snap.h,
+                title: snap.title || undefined,
+                _restoring: true
+            });
+
+            if (!win) continue;
+
+            // ---- Применяем флаги ----
+            if (snap.maximized) {
+                FAR.WM.toggleMaximize(win.id);
+            } else if (snap.snap === 'left' || snap.snap === 'right') {
+                FAR.WM.snapWindow(win.id, snap.snap);
+            }
+            if (snap.minimized) {
+                FAR.WM.minimizeWindow(win.id);
+            }
+
+            // Восстанавливаем zTop (приблизительно — точный
+            // порядок обеспечим через focusWindow ниже)
+            if (snap.zTop) win.zTop = snap.zTop;
+        } catch (e) {
+            console.warn('[WM restore] failed:', snap.appId, e);
+        }
+    }
+
+    FAR.WM._restoring = false;
+
+    // После восстановления — сохраняем ещё раз (актуализируем),
+    // но не дёргаем debounce, чтобы не было лишних срабатываний
+    FAR.WM._saveWindowState();
+};
+FAR.WM.focusWindow = function (id) {
+    const win = FAR.WM.getWindow(id);
+    if (!win) return;
+
+    // Никакое другое окно не должно быть «выше» модального родителя
+    if (win.modalParent) {
+        const parent = FAR.WM.getWindow(win.modalParent);
+        if (parent) {
+            FAR.WM.state.zTop++;
+            parent.el.style.zIndex = FAR.WM.state.zTop;
+        }
+    }
+
+    FAR.WM.state.zTop++;
+    win.el.style.zIndex = FAR.WM.state.zTop;
+    win.zTop = FAR.WM.state.zTop;
+
+    FAR.WM.state.windows.forEach(function (w) {
+        w.el.classList.toggle('focused', w.id === id);
+    });
+
+    if (win.minimized) {
+        win.minimized = false;
+        win.el.classList.remove('minimized');
+    }
+
+    FAR.WM.state.activeWindowId = id;
+    FAR.WM._renderTaskbar();
+
+    // Синхронизация активной панели с окном Проводника.
+    if (win.appId === 'explorer' && win.props && win.props.side) {
+        FAR.activePanel = win.props.side;
+        try {
+            const pl = document.getElementById('panelLeft');
+            const pr = document.getElementById('panelRight');
+            if (pl && pr) {
+                pl.classList.toggle('active', FAR.activePanel === 'left');
+                pr.classList.toggle('active', FAR.activePanel === 'right');
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    if (typeof win.props.onFocus === 'function') {
+        try { win.props.onFocus(win); } catch (e) {}
+    }
+
+    // Сохраняем состояние (debounce)
+    FAR.WM._saveWindowStateDebounced();
+};
+FAR.WM.minimizeWindow = function (id) {
+    const win = FAR.WM.getWindow(id);
+    if (!win) return;
+    win.minimized = true;
+    win.el.classList.add('minimized');
+
+    if (FAR.WM.state.activeWindowId === id) {
+        const next = FAR.WM.state.windows
+            .filter(w => !w.minimized)
+            .sort((a, b) => (b.zTop || 0) - (a.zTop || 0))[0];
+        FAR.WM.state.activeWindowId = next ? next.id : null;
+        if (next) FAR.WM.focusWindow(next.id);
+    }
+    FAR.WM._renderTaskbar();
+    FAR.WM._saveWindowStateDebounced();
+};
+FAR.WM.restoreWindow = function (id) {
+    const win = FAR.WM.getWindow(id);
+    if (!win) return;
+    win.minimized = false;
+    win.el.classList.remove('minimized');
+    FAR.WM.focusWindow(id);
+    FAR.WM._saveWindowStateDebounced();
+};
+
+FAR.WM.toggleMaximize = function (id) {
+    const win = FAR.WM.getWindow(id);
+    if (!win) return;
+
+    if (win.maximized) {
+        const r = win.prevRect || { x: 100, y: 100, w: 800, h: 600 };
+        FAR.WM._applyRect(win, r);
+        win.el.classList.remove('maximized');
+        win.maximized = false;
+    } else {
+        win.prevRect = { x: win.x, y: win.y, w: win.w, h: win.h };
+        const rect = FAR.WM._getDesktopRect();
+        FAR.WM._applyRect(win, { x: 0, y: 0, w: rect.width, h: rect.height });
+        win.el.classList.add('maximized');
+        win.maximized = true;
+    }
+    FAR.WM.focusWindow(id);
+    FAR.WM._saveWindowStateDebounced();
+};
+
+FAR.WM.snapWindow = function (id, side) {
+    const win = FAR.WM.getWindow(id);
+    if (!win) return;
+
+    if (side === 'restore') {
+        const r = win.prevRect || { x: 100, y: 100, w: 800, h: 600 };
+        FAR.WM._applyRect(win, r);
+        win.el.classList.remove('snapped-left', 'snapped-right');
+        win.snap = null;
+        FAR.WM._saveWindowStateDebounced();
+        return;
+    }
+
+    if (!win.snap) {
+        win.prevRect = { x: win.x, y: win.y, w: win.w, h: win.h };
+    }
+    const rect = FAR.WM._getDesktopRect();
+    if (side === 'left') {
+        FAR.WM._applyRect(win, { x: 0, y: 0, w: Math.floor(rect.width / 2), h: rect.height });
+        win.el.classList.add('snapped-left');
+        win.el.classList.remove('snapped-right');
+        win.snap = 'left';
+    } else if (side === 'right') {
+        FAR.WM._applyRect(win, { x: Math.floor(rect.width / 2), y: 0,
+            w: Math.ceil(rect.width / 2), h: rect.height });
+        win.el.classList.add('snapped-right');
+        win.el.classList.remove('snapped-left');
+        win.snap = 'right';
+    }
+    FAR.WM.focusWindow(id);
+    FAR.WM._saveWindowStateDebounced();
+};
+
+FAR.WM._applyRect = function (win, r) {
+    win.x = r.x; win.y = r.y; win.w = r.w; win.h = r.h;
+    win.el.style.left   = r.x + 'px';
+    win.el.style.top    = r.y + 'px';
+    win.el.style.width  = r.w + 'px';
+    win.el.style.height = r.h + 'px';
+
+    if (typeof win.props.onResize === 'function') {
+        try { win.props.onResize(win, r); } catch (e) {}
+    }
+
+    // Debounce-сохранение (drag/resize двигают много раз)
+    FAR.WM._saveWindowStateDebounced();
+};
+
+
+// Сохраняем состояние окон при выгрузке страницы,
+// чтобы debounce не «потерял» последнее изменение.
+window.addEventListener('beforeunload', function () {
+    if (FAR.WM.state.active) {
+        FAR.WM._saveWindowState();
+    }
+});
+
+FAR.WM.getWindow = function (id) {
+    return FAR.WM.state.windows.find(function (w) {
+        return w.id === id;
+    }) || null;
+};
+
+FAR.WM.getActiveWindow = function () {
+    return FAR.WM.getWindow(FAR.WM.state.activeWindowId);
 };
