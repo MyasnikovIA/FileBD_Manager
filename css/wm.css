@@ -18,7 +18,6 @@
 #wmRoot.active { display: flex; }
 
 /* Обои рабочего стола */
-/* Обои рабочего стола */
 #wmDesktop {
     position: absolute;
     inset: 0 0 48px 0; /* снизу оставляем место под панель задач */
@@ -28,11 +27,31 @@
             linear-gradient(135deg, #0b1220 0%, #111a2e 100%);
     overflow: hidden;
 
-    /* Эти три правила нужны, когда на фон ставится картинка
+    /* Эти правила нужны, когда на фон ставится картинка
        (модуль 48-wm-wallpaper.js выставляет style.backgroundImage). */
     background-size: cover;
     background-position: center center;
     background-repeat: no-repeat;
+}
+
+/* ==== 360°-обои (модуль 49-wm-wallpaper-360.js) ==== */
+#wmWallpaper360 {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    background: transparent;
+}
+
+/* Pannellum внутри обоев: прозрачный фон, чтобы между
+   «началом загрузки» и «готово» был виден дефолтный градиент */
+#wmWallpaper360 .pnlm-container {
+    background: transparent;
+}
+
+/* Иконки рабочего стола — всегда выше обоев */
+.wm-desktop-icons {
+    z-index: 1;
 }
 
 /* ==== Иконки на рабочем столе ==== */
