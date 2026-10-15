@@ -1609,11 +1609,60 @@ FAR.WM._navigateViewerGeneric = async function (win, dir) {
         if (!files[next].isFolder) {
             const newItem = files[next];
             const appId = win.appId;
+
+            // ============================================================
+            // Сохраняем геометрию и состояние текущего окна,
+            // чтобы новое окно открылось с теми же размерами
+            // и с теми же флагами (развёрнуто / приклеено).
+            //
+            // ВАЖНО: если окно развёрнуто или приклеено — у него уже
+            // есть prevRect с «нормальным» размером. Именно его и надо
+            // передать в новое окно, иначе после переоткрытия
+            // un-maximize вернёт окно к «полу-максимизированному» виду.
+            // ============================================================
+            const saved = {
+                x:      win.x,
+                y:      win.y,
+                width:  win.w,
+                height: win.h,
+                maximized: !!win.maximized,
+                snap: win.snap || null
+            };
+            if (win.prevRect) {
+                saved.x      = win.prevRect.x;
+                saved.y      = win.prevRect.y;
+                saved.width  = win.prevRect.w;
+                saved.height = win.prevRect.h;
+            }
+
             FAR.WM._finalizeViewer(win);
             FAR.WM.closeWindow(win.id, true);
-            FAR.WM.openApp(appId, {
-                props: { file: newItem, side: side }
+
+            const newWin = await FAR.WM.openApp(appId, {
+                props: { file: newItem, side: side },
+                x:      saved.x,
+                y:      saved.y,
+                width:  saved.width,
+                height: saved.height
             });
+
+            // ============================================================
+            // Применяем состояние к новому окну.
+            //
+            // openWindow уже создал окно с нужной геометрией (saved.x/y/w/h).
+            // Теперь надо:
+            //   • если было maximized — развернуть (toggleMaximize
+            //     сам сохранит prevRect = saved-геометрию);
+            //   • если было snapped — приклеить к той же стороне
+            //     (snapWindow тоже сам сохранит prevRect).
+            // ============================================================
+            if (newWin) {
+                if (saved.maximized) {
+                    FAR.WM.toggleMaximize(newWin.id);
+                } else if (saved.snap === 'left' || saved.snap === 'right') {
+                    FAR.WM.snapWindow(newWin.id, saved.snap);
+                }
+            }
             return;
         }
         next += dir;
