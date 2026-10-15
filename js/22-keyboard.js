@@ -51,6 +51,20 @@ FAR.setupKeyboard = function() {
             return;
         }
 
+        // === ОКОННЫЙ РЕЖИМ: клавиатуру получает активное окно WM ===
+        // Если WM активен, панели FAR должны обрабатывать клавиши
+        // ТОЛЬКО когда активное окно — Проводник. Во всех остальных
+        // случаях (эмулятор, просмотрщик, плеер, диалог) событие
+        // уходит своему обработчику внутри окна, а FAR его не трогает.
+        if (typeof FAR.WM !== 'undefined' && FAR.WM.state && FAR.WM.state.active) {
+            const activeWin = (typeof FAR.WM.getActiveWindow === 'function')
+                ? FAR.WM.getActiveWindow()
+                : null;
+            if (!activeWin || activeWin.appId !== 'explorer') {
+                return;
+            }
+        }
+
         if (FAR.progress.active) return;
         if (!FAR.db) return;
 
