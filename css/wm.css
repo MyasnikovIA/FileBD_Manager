@@ -18,6 +18,7 @@
 #wmRoot.active { display: flex; }
 
 /* Обои рабочего стола */
+/* Обои рабочего стола */
 #wmDesktop {
     position: absolute;
     inset: 0 0 48px 0; /* снизу оставляем место под панель задач */
@@ -26,6 +27,12 @@
             radial-gradient(900px 700px at 80% 80%, #2b1d3f 0%, transparent 55%),
             linear-gradient(135deg, #0b1220 0%, #111a2e 100%);
     overflow: hidden;
+
+    /* Эти три правила нужны, когда на фон ставится картинка
+       (модуль 48-wm-wallpaper.js выставляет style.backgroundImage). */
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
 }
 
 /* ==== Иконки на рабочем столе ==== */

@@ -179,6 +179,29 @@ FAR.WM._showDesktopContextMenu = function (x, y) {
     FAR.WM._addCtxItem(menu, '🎮 Настройка джойстика', function () {
         FAR.WM.openApp('gamepad');
     });
+
+    // ============================================================
+    // Обои рабочего стола (модуль 48-wm-wallpaper.js)
+    // ============================================================
+    if (typeof FAR.WMWallpaper !== 'undefined') {
+        FAR.WM._addCtxSep(menu);
+
+        FAR.WM._addCtxItem(menu, '🖼 Обои из URL…', function () {
+            FAR.WMWallpaper.promptUrl();
+        });
+        FAR.WM._addCtxItem(menu, '🖼 Обои из БД…', function () {
+            FAR.WMWallpaper.pickFromDb();
+        });
+
+        // «Убрать обои» показываем только если установлены не дефолтные
+        const st = FAR.WMWallpaper._load();
+        if (st.source !== 'default') {
+            FAR.WM._addCtxItem(menu, '🗑 Убрать обои', function () {
+                FAR.WMWallpaper.reset();
+            });
+        }
+    }
+
     FAR.WM._addCtxSep(menu);
     FAR.WM._addCtxItem(menu, '⚙ Сбросить расположение иконок', function () {
         FAR.WM._saveDesktopIcons(FAR.WM.DESKTOP_DEFAULT.slice());
