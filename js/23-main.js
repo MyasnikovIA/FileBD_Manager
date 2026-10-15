@@ -138,13 +138,18 @@ document.addEventListener('DOMContentLoaded', async function() {
             if (typeof FAR.WM !== 'undefined' && typeof FAR.WM.getSavedMode === 'function') {
                 const savedMode = FAR.WM.getSavedMode();
                 if (savedMode === 'wm' && !FAR.WM.state.active) {
-                    // Небольшая задержка, чтобы DOM и WM успели
-                    // полностью инициализироваться
                     setTimeout(function () {
                         try {
                             FAR.WM.enter();
                         } catch (e) {
                             console.warn('[WM] restore mode failed:', e);
+                        }
+                        // Попытка восстановить fullscreen (может
+                        // не сработать без user gesture — тогда
+                        // сработает _installAutoRestore в
+                        // 47-fullscreen.js при первом клике).
+                        if (typeof FAR.FS !== 'undefined' && typeof FAR.FS.enter === 'function') {
+                            FAR.FS.enter().catch(function () {});
                         }
                     }, 200);
                 }

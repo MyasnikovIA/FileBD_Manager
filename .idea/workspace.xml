@@ -23,8 +23,12 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="58b0bec6-76ed-43a5-8023-6ef531bb6bea" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/46-wm-mp3-viewer.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/46-wm-mp3-viewer.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/js/23-main.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/23-main.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/js/41-wm-taskbar.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/41-wm-taskbar.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/modals/desktop.html" beforeDir="false" afterPath="$PROJECT_DIR$/modals/desktop.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -80,7 +84,8 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1789095193587</updated>
-      <workItem from="1791208933281" duration="16591000" />
+      <workItem from="1791208933281" duration="18710000" />
+      <workItem from="1791351832361" duration="14000" />
     </task>
     <servers />
   </component>

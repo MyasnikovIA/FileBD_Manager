@@ -45,6 +45,11 @@ FAR.WM._renderTaskbar = function () {
     });
 
     FAR.WM.updateTray();
+    try {
+        if (FAR.FS && typeof FAR.FS._updateTrayButton === 'function') {
+            FAR.FS._updateTrayButton();
+        }
+    } catch (e) { /* ignore */ }
 };
 
 // ============================================================
