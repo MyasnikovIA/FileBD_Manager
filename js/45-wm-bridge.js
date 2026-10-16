@@ -2351,27 +2351,47 @@ FAR.WM._openExplorerConnDialog = function (parentWin, side) {
     FAR.WM._mountSideConnUI(dialogWin, side);
 };
 
+/**
+ * Диалог подключения одной панели WM-проводника.
+ * Поддерживает выбор типа БД (couchdb / filesystem),
+ * ввод логина/пароля и выбор корневого каталога.
+ */
 FAR.WM._mountSideConnUI = function (win, side) {
     win.bodyEl.innerHTML =
         '<div style="padding:20px;background:#1e1e2e;color:#cdd6f4;height:100%;box-sizing:border-box;overflow:auto;">' +
         '<div style="display:flex;flex-direction:column;gap:12px;">' +
-        '<div style="padding:8px 10px;background:#313244;border-left:3px solid #89b4fa;border-radius:4px;font-size:13px;color:#cdd6f4;">' +
+        '<div style="padding:8px 10px;background:#313244;border-left:3px solid #89b4fa;border-radius:4px;font-size:13px;">' +
         'Подключение только для панели: <b style="color:#89b4fa;">' +
-        (side === 'left' ? 'Левая' : 'Правая') +
-        '</b></div>' +
-        '<label style="font-size:12px;color:#a6adc8;">Адрес БД<input data-role="url" type="text" style="width:100%;margin-top:4px;padding:8px;background:#313244;border:1px solid #45475a;border-radius:5px;color:#cdd6f4;font-family:monospace;"></label>' +
-        '<label style="font-size:12px;color:#a6adc8;">Имя БД<input data-role="db" type="text" style="width:100%;margin-top:4px;padding:8px;background:#313244;border:1px solid #45475a;border-radius:5px;color:#cdd6f4;font-family:monospace;"></label>' +
-        '<label style="font-size:12px;color:#a6adc8;">Пользователь<input data-role="user" type="text" style="width:100%;margin-top:4px;padding:8px;background:#313244;border:1px solid #45475a;border-radius:5px;color:#cdd6f4;font-family:monospace;"></label>' +
-        '<label style="font-size:12px;color:#a6adc8;">Пароль<input data-role="pass" type="password" style="width:100%;margin-top:4px;padding:8px;background:#313244;border:1px solid #45475a;border-radius:5px;color:#cdd6f4;font-family:monospace;"></label>' +
+        (side === 'left' ? 'Левая' : 'Правая') + '</b></div>' +
+
+        '<label style="font-size:12px;color:#a6adc8;">Тип источника' +
+        '<select data-role="type" style="width:100%;margin-top:4px;padding:8px;background:#313244;border:1px solid #45475a;border-radius:5px;color:#cdd6f4;">' +
+        '<option value="couchdb">🗄️ CouchDB / PouchDB</option>' +
+        '<option value="filesystem">💾 Локальный диск (FileServer)</option>' +
+        '</select></label>' +
+
+        '<label style="font-size:12px;color:#a6adc8;" data-role="url-label">Адрес БД (с портом)' +
+        '<input data-role="url" type="text" style="width:100%;margin-top:4px;padding:8px;background:#313244;border:1px solid #45475a;border-radius:5px;color:#cdd6f4;font-family:monospace;"></label>' +
+
+        '<label style="font-size:12px;color:#a6adc8;" data-role="db-row">Имя базы данных' +
+        '<input data-role="db" type="text" style="width:100%;margin-top:4px;padding:8px;background:#313244;border:1px solid #45475a;border-radius:5px;color:#cdd6f4;font-family:monospace;"></label>' +
+
+        '<label style="font-size:12px;color:#a6adc8;">Имя пользователя' +
+        '<input data-role="user" type="text" style="width:100%;margin-top:4px;padding:8px;background:#313244;border:1px solid #45475a;border-radius:5px;color:#cdd6f4;font-family:monospace;"></label>' +
+
+        '<label style="font-size:12px;color:#a6adc8;">Пароль' +
+        '<input data-role="pass" type="password" style="width:100%;margin-top:4px;padding:8px;background:#313244;border:1px solid #45475a;border-radius:5px;color:#cdd6f4;font-family:monospace;"></label>' +
+
         '<div data-role="error" style="color:#f38ba8;font-size:12px;min-height:16px;"></div>' +
         '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">' +
         '<button data-role="cancel" style="padding:8px 18px;background:#585b70;color:#cdd6f4;border:none;border-radius:5px;cursor:pointer;">Отмена</button>' +
         '<button data-role="connect" style="padding:8px 18px;background:#a6e3a1;color:#1e1e2e;border:none;border-radius:5px;cursor:pointer;font-weight:bold;">Подключиться</button>' +
-        '</div>' +
-        '</div>' +
-        '</div>';
+        '</div></div></div>';
 
+    const typeSel  = win.bodyEl.querySelector('[data-role="type"]');
     const urlEl    = win.bodyEl.querySelector('[data-role="url"]');
+    const urlLbl   = win.bodyEl.querySelector('[data-role="url-label"]');
+    const dbRow    = win.bodyEl.querySelector('[data-role="db-row"]');
     const dbEl     = win.bodyEl.querySelector('[data-role="db"]');
     const userEl   = win.bodyEl.querySelector('[data-role="user"]');
     const passEl   = win.bodyEl.querySelector('[data-role="pass"]');
@@ -2379,38 +2399,47 @@ FAR.WM._mountSideConnUI = function (win, side) {
     const cancelBtn  = win.bodyEl.querySelector('[data-role="cancel"]');
     const connectBtn = win.bodyEl.querySelector('[data-role="connect"]');
 
-    // Предзаполняем из текущего контекста панели или LS
     const ctx = FAR.side[side];
     let def = null;
-    if (ctx && ctx.conn) {
-        def = ctx.conn;
-    } else if (typeof FAR.getConnDefaultsForSide === 'function') {
-        def = FAR.getConnDefaultsForSide(side);
-    } else if (typeof FAR.getDefaultConn === 'function') {
-        def = FAR.getDefaultConn();
-    }
-    if (!def) def = { url: '', db: '', user: '', pass: '' };
+    if (ctx && ctx.conn) def = ctx.conn;
+    else if (typeof FAR.getConnDefaultsForSide === 'function') def = FAR.getConnDefaultsForSide(side);
+    else if (typeof FAR.getDefaultConn === 'function') def = FAR.getDefaultConn();
+    if (!def) def = { type: 'couchdb', url: '', db: '', user: '', pass: '' };
 
-    urlEl.value  = def.url  || '';
-    dbEl.value   = def.db   || '';
-    userEl.value = def.user || '';
-    passEl.value = def.pass || '';
+    typeSel.value = def.type || 'couchdb';
+    urlEl.value   = def.url  || '';
+    dbEl.value    = def.db   || '';
+    userEl.value  = def.user || '';
+    passEl.value  = def.pass || '';
 
-    cancelBtn.onclick = function () {
-        FAR.WM.closeWindow(win.id);
+    const updateFields = function () {
+        const type = typeSel.value || 'couchdb';
+        if (type === 'filesystem') {
+            urlLbl.firstChild.nodeValue = 'Адрес FileServer';
+            urlEl.placeholder = 'http://localhost:8080';
+            dbRow.style.display = 'none';
+        } else {
+            urlLbl.firstChild.nodeValue = 'Адрес БД (с портом)';
+            urlEl.placeholder = 'http://192.168.15.20:5984';
+            dbRow.style.display = '';
+        }
     };
+    typeSel.addEventListener('change', updateFields);
+    updateFields();
+
+    cancelBtn.onclick = function () { FAR.WM.closeWindow(win.id); };
 
     connectBtn.onclick = async function () {
+        const type = typeSel.value || 'couchdb';
         const cfg = {
+            type: type,
             url:  urlEl.value.trim(),
-            db:   dbEl.value.trim(),
+            db:   type === 'couchdb' ? dbEl.value.trim() : '',
             user: userEl.value.trim(),
             pass: passEl.value
         };
-        if (!cfg.url || !cfg.db) {
-            errEl.textContent = 'Укажите URL и имя БД';
-            return;
-        }
+        if (!cfg.url) { errEl.textContent = 'Укажите URL'; return; }
+        if (type === 'couchdb' && !cfg.db) { errEl.textContent = 'Укажите имя БД'; return; }
 
         connectBtn.disabled = true;
         connectBtn.textContent = 'Подключение…';
@@ -2426,62 +2455,31 @@ FAR.WM._mountSideConnUI = function (win, side) {
             return;
         }
 
-        // ============================================================
-        // Применяем конфиг ТОЛЬКО к указанной стороне.
-        // applyConnectionToSide перезатрёт:
-        //   s.db, s.conn, s.fullUrl, s.fileIndex, s.path, s.files,
-        //   s.cursor, s.selectedIdx, s.anchor, s.loading
-        // ============================================================
         try {
             FAR.applyConnectionToSide(side, cfg, res.db, res.fullUrl);
         } catch (e) {
-            console.error('[WM conn] applyConnectionToSide failed:', e);
-            errEl.textContent = '❌ Не удалось применить подключение: ' + e.message;
+            errEl.textContent = '❌ Не удалось применить: ' + e.message;
             connectBtn.disabled = false;
             connectBtn.textContent = 'Подключиться';
             return;
         }
 
-        // Сохраняем side-specific конфиг
-        try {
-            if (typeof FAR.saveSideConnToLS === 'function') {
-                FAR.saveSideConnToLS(side, cfg);
-            }
-        } catch (e) { /* ignore */ }
+        try { if (typeof FAR.saveSideConnToLS === 'function') FAR.saveSideConnToLS(side, cfg); } catch (e) {}
 
-        // Если у нас активна эта панель — обновим Auth UI и статус
         FAR.updateAuthUI();
-        FAR.setStatus('✅ Панель «' + (side === 'left' ? 'Левая' : 'Правая') +
-            '» подключена: ' + res.fullUrl);
-        FAR.toast('Панель подключена к ' + cfg.db, 'success');
+        FAR.setStatus('✅ Панель «' + (side === 'left' ? 'Левая' : 'Правая') + '» подключена');
+        FAR.toast('Панель подключена', 'success');
 
-        // Загружаем корень панели
-        try {
-            await FAR.loadFilesForSide(side, { path: '/', silent: true });
-        } catch (e) {
-            console.warn('[WM conn] loadFilesForSide failed:', e);
-        }
+        try { await FAR.loadFilesForSide(side, { path: '/', silent: true }); } catch (e) {}
+        try { FAR.renderPanel(side); } catch (e) {}
 
-        // Перерисовываем панель — попадёт в клон окна Проводника
-        try {
-            FAR.renderPanel(side);
-        } catch (e) { /* ignore */ }
+        if (typeof FAR.WM.updateTray === 'function') FAR.WM.updateTray();
+        if (typeof FAR.updateConnIndicators === 'function') FAR.updateConnIndicators();
 
-        // Обновляем трей (там показывается текущая БД активной панели)
-        if (typeof FAR.WM.updateTray === 'function') {
-            FAR.WM.updateTray();
-        }
-
-        // Обновляем индикаторы подключения (на случай если
-        // они где-то используются в DOM вне WM)
-        if (typeof FAR.updateConnIndicators === 'function') {
-            FAR.updateConnIndicators();
-        }
-
-        // Закрываем диалог
         FAR.WM.closeWindow(win.id);
     };
 };
+
 // ============================================================
 // Файл: js/45-wm-bridge.js
 // Множественный выбор файлов из БД

@@ -1,3 +1,7 @@
+// ============================================================
+// 05-connection.js — подключение к БД: CouchDB или FileServer.
+// ============================================================
+
 FAR.getDefaultConn = function() {
     const proto = location.protocol === 'file:' ? 'http:' : location.protocol;
     const host  = location.hostname || 'localhost';
@@ -24,8 +28,6 @@ FAR.getDefaultConnForType = function(type) {
     }
     return FAR.getDefaultConn();
 };
-
-
 
 FAR.loadConnFromLS = function() {
     try {
@@ -58,8 +60,6 @@ FAR.ensureDb = function() {
     return true;
 };
 
-
-// --- connectToDb: диспетчер по типу ---
 FAR.connectToDb = async function(cfg) {
     const type = cfg.type || 'couchdb';
 
@@ -67,20 +67,31 @@ FAR.connectToDb = async function(cfg) {
         if (typeof FAR.FsClient !== 'function') {
             throw new Error('FsClient не загружен (js/04a-fs-client.js)');
         }
-        const baseUrl = String(cfg.url).replace(/\/+$/, '');
-        const client = new FAR.FsClient(baseUrl);
+        const baseUrl = String(cfg.url || '').replace(/\/+$/, '');
+        if (!baseUrl) throw new Error('Не указан адрес FileServer');
+
+        const client = new FAR.FsClient(baseUrl, {
+            user: cfg.user || '',
+            pass: cfg.pass || ''
+        });
+
         const info = await client.info();
         await client.allDocs({ limit: 1 });   // проверка доступности
-        return { db: client, info, fullUrl: baseUrl, type: 'filesystem' };
+
+        return {
+            db: client,
+            info: info,
+            fullUrl: baseUrl + (cfg.user ? ' (' + cfg.user + ')' : ''),
+            type: 'filesystem'
+        };
     }
 
-    // По умолчанию CouchDB / PouchDB
+    // CouchDB / PouchDB
     const url = String(cfg.url).replace(/\/+$/, '');
     const fullUrl = url + '/' + cfg.db;
     const pouchOpts = {};
-    if (cfg.user) {
-        pouchOpts.auth = { username: cfg.user, password: cfg.pass || '' };
-    }
+    if (cfg.user) pouchOpts.auth = { username: cfg.user, password: cfg.pass || '' };
+
     const testDb = new PouchDB(fullUrl, pouchOpts);
     const info = await testDb.info();
     await testDb.allDocs({ limit: 1 });

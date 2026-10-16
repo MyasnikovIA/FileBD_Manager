@@ -23,13 +23,13 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="58b0bec6-76ed-43a5-8023-6ef531bb6bea" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/js/04a-fs-client.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/login.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/js/04a-fs-client.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/04a-fs-client.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/js/05-connection.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/05-connection.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/06-files.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/06-files.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/js/10-connection-modal.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/10-connection-modal.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/35a-multi-db-core.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/35a-multi-db-core.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/js/45-wm-bridge.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/45-wm-bridge.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/modals/connection.html" beforeDir="false" afterPath="$PROJECT_DIR$/modals/connection.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -67,6 +67,9 @@
       <recent name="C:\AppServ\www\FileBD_Manager_Git\lib" />
       <recent name="C:\AppServ\www\FileBD_Manager_Git" />
     </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\AppServ\www\FileBD_Manager_Git" />
+    </key>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
@@ -89,7 +92,7 @@
       <workItem from="1791208933281" duration="18710000" />
       <workItem from="1791351832361" duration="14000" />
       <workItem from="1792053389141" duration="3675000" />
-      <workItem from="1792129291534" duration="2985000" />
+      <workItem from="1792129291534" duration="7328000" />
     </task>
     <servers />
   </component>
