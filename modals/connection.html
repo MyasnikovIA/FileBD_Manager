@@ -9,19 +9,36 @@
                 <div class="conn-target" id="connTarget" style="display:none;">
                     Подключение только для панели: <b id="connTargetName">—</b>
                 </div>
+
+                <!-- Тип источника -->
                 <div class="conn-field">
-                    <label for="connUrl">Адрес БД (с портом)</label>
+                    <label for="connType">Тип источника</label>
+                    <select id="connType" onchange="FAR._connModalUpdateFields()">
+                        <option value="couchdb">🗄️ CouchDB / PouchDB (удалённый сервер)</option>
+                        <option value="filesystem">💾 Локальный диск (FileServer.java)</option>
+                    </select>
+                </div>
+
+                <!-- Адрес (URL БД или URL FileServer) -->
+                <div class="conn-field">
+                    <label for="connUrl" id="connUrlLabel">Адрес БД (с портом)</label>
                     <input type="text" id="connUrl" placeholder="http://192.168.15.20:5984" autocomplete="off">
                 </div>
-                <div class="conn-field">
+
+                <!-- Имя базы данных (скрывается для filesystem) -->
+                <div class="conn-field" id="connDbRow">
                     <label for="connDb">Имя базы данных</label>
                     <input type="text" id="connDb" placeholder="FileBD" autocomplete="off">
                 </div>
-                <div class="conn-field">
+
+                <!-- Логин (скрывается для filesystem) -->
+                <div class="conn-field" id="connUserRow">
                     <label for="connUser">Имя пользователя</label>
                     <input type="text" id="connUser" placeholder="username" autocomplete="username">
                 </div>
-                <div class="conn-field">
+
+                <!-- Пароль (скрывается для filesystem) -->
+                <div class="conn-field" id="connPassRow">
                     <label for="connPass">Пароль пользователя</label>
                     <input type="password" id="connPass" placeholder="password" autocomplete="current-password">
                 </div>

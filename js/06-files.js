@@ -135,8 +135,8 @@ FAR.listRecursiveFromSide = async function (side, prefix, opts) {
     const fEnd   = 'f:' + encBase + '\ufff0';
 
     const [dRes, fRes] = await Promise.all([
-        s.db.allDocs({ startkey: dStart, endkey: dEnd, include_docs: true }),
-        s.db.allDocs({ startkey: fStart, endkey: fEnd, include_docs: true })
+        s.db.allDocs({ startkey: dStart, endkey: dEnd, include_docs: true, recursive: true }),
+        s.db.allDocs({ startkey: fStart, endkey: fEnd, include_docs: true, recursive: true })
     ]);
 
     const out = [];

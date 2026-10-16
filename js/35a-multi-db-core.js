@@ -162,17 +162,23 @@ FAR.clearSideConnFromLS = function (side) {
  *   3) глобальный LS (filebd_conn)
  *   4) дефолт (хост:5984 / FileBD)
  */
-FAR.getConnDefaultsForSide = function (side) {
+FAR.getConnDefaultsForSide = function (side, forceType) {
+    // 1. Текущий контекст панели
     if (side && FAR.side[side] && FAR.side[side].conn) {
         return FAR.side[side].conn;
     }
+    // 2. LS панели
     if (side) {
         const s = FAR.loadSideConnFromLS(side);
-        if (s) return s;
+        if (s && (!forceType || (s.type || 'couchdb') === forceType)) return s;
     }
+    // 3. Глобальный LS
     const g = FAR.loadConnFromLS();
-    if (g) return g;
-    return FAR.getDefaultConn();
+    if (g && (!forceType || (g.type || 'couchdb') === forceType)) return g;
+    // 4. Дефолт
+    return FAR.getDefaultConnForType
+        ? FAR.getDefaultConnForType(forceType || 'couchdb')
+        : FAR.getDefaultConn();
 };
 
 // ============================================================
